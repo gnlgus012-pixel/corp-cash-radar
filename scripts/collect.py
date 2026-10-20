@@ -515,6 +515,211 @@ def update_financials(universe: dict) -> dict:
     return {cc: (cache.get(cc) or {}).get("fin") for cc in universe}
 
 
+
+# ───────────────────────── 공시 원문 세부내용 (금액·일정) ─────────────────────────
+# 목록 API에는 금액·납입일이 없어 공시 원문(document.xml)의 표에서 항목명으로 값을 찾는다.
+# 항목명은 config.json 의 detail_specs 에서 관리 (정규식, 공백 제거한 항목명 기준).
+
+TABLE_RE = re.compile(r"<TABLE\b.*?</TABLE>", re.S | re.I)
+TR_RE = re.compile(r"<TR\b.*?</TR>", re.S | re.I)
+CELL_RE = re.compile(r"<(TD|TH|TE|TU)\b[^>]*>(.*?)</\1\s*>", re.S | re.I)
+DATE_RE = re.compile(r"(20\d{2})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})")
+
+
+def _cell_text(h: str) -> str:
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", h))).strip()
+
+
+def doc_rows(text: str) -> list[list[str]]:
+    """원문 XML → 표의 행 목록. 정정공시의 '정정전/정정후' 대조표는 제외(정정 전 값이 잡히지 않도록)."""
+    rows = []
+    for t in TABLE_RE.findall(text):
+        flat = norm(_cell_text(t))
+        if "정정전" in flat and "정정후" in flat:
+            continue
+        for tr in TR_RE.findall(t):
+            cells = [_cell_text(m[1]) for m in CELL_RE.findall(tr)]
+            if any(cells):
+                rows.append(cells)
+    return rows
+
+
+def parse_amount(s: str) -> int | None:
+    if not s or DATE_RE.search(s):
+        return None
+    m = re.search(r"-?\d[\d,]*", s.replace(" ", ""))
+    if not m:
+        return None
+    try:
+        v = int(m.group().replace(",", ""))
+    except ValueError:
+        return None
+    return v if v > 0 else None
+
+
+def parse_date(s: str) -> str | None:
+    m = DATE_RE.search(s or "")
+    if not m:
+        return None
+    y, mo, d = int(m[1]), int(m[2]), int(m[3])
+    try:
+        return date(y, mo, d).isoformat()
+    except ValueError:
+        return None
+
+
+def find_value(rows: list[list[str]], label_re: str, kind: str):
+    """항목명이 있는 셀 '뒤쪽' 셀에서 값(금액/날짜/글자)을 찾는다. 첫 번째로 찾은 값을 반환."""
+    rx = re.compile(label_re)
+    for cells in rows:
+        for j, c in enumerate(cells):
+            if not rx.search(norm(c)):
+                continue
+            for v in cells[j + 1:]:
+                if kind == "amount":
+                    r = parse_amount(v)
+                elif kind == "date":
+                    r = parse_date(v)
+                else:
+                    r = v if v and v not in ("-", "해당사항없음") and not rx.search(norm(v)) else None
+                if r is not None:
+                    return r
+            break
+    return None
+
+
+def extract_detail(rows: list[list[str]], spec: dict) -> dict:
+    d = {"amount": None, "amount_label": spec.get("amount_label", "금액"), "dates": [], "texts": []}
+    if spec.get("amount_sum"):
+        vals = [find_value(rows, rx, "amount") for rx in spec["amount_sum"]]
+        vals = [v for v in vals if v]
+        d["amount"] = sum(vals) if vals else None
+    for rx in spec.get("amount", []):
+        if d["amount"] is None:
+            d["amount"] = find_value(rows, rx, "amount")
+    for label, rx in spec.get("dates", []):
+        v = find_value(rows, rx, "date")
+        if v:
+            d["dates"].append([label, v])
+    for label, rx, kind in spec.get("texts", []):
+        v = find_value(rows, rx, kind)
+        if v is not None:
+            d["texts"].append([label, v if kind != "text" else str(v)[:40]])
+    return d
+
+
+def dart_document(rcept_no: str) -> tuple[str | None, str]:
+    """공시 원문 본문 텍스트. 반환 (텍스트, 오류메시지)"""
+    check_time()
+    t0 = time.monotonic()
+    try:
+        r = http_get(f"{DART}/document.xml", params={"crtfc_key": DART_KEY, "rcept_no": rcept_no})
+        c = r.content
+    except Exception as e:
+        return None, f"요청 오류: {e}"
+    finally:
+        STATS["dart_calls"] += 1
+        STATS["dart_sec"] += time.monotonic() - t0
+        STATS["doc_calls"] = STATS.get("doc_calls", 0) + 1
+        time.sleep(CFG.get("dart", {}).get("pause_sec", 0.15))
+    if not c.startswith(b"PK"):
+        head = c[:300].decode("utf-8", "ignore")
+        if "<status>020</status>" in head or '"020"' in head:
+            raise DartError("DART 일일 요청 한도 초과(020)")
+        return None, "응답 오류: " + re.sub(r"\s+", " ", head)[:120]
+    try:
+        z = zipfile.ZipFile(io.BytesIO(c))
+        names = z.namelist()
+        main_name = next((n for n in names if n.startswith(rcept_no)), names[0])
+        raw = z.read(main_name)
+    except Exception as e:
+        return None, f"압축 해제 오류: {e}"
+    if len(raw) > CFG["details"]["max_doc_mb"] * 1024 * 1024:
+        return None, f"원문이 너무 큼 ({len(raw) // 1024 // 1024}MB)"
+    for enc in ("utf-8", "cp949", "euc-kr"):
+        try:
+            return raw.decode(enc), ""
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", "ignore"), ""
+
+
+def update_details(events: list[dict]) -> None:
+    """이벤트별 금액·일정을 원문에서 추출해 event['detail']에 붙인다. 결과는 캐시(재수집 안 함)."""
+    dc = CFG["details"]
+    specs = dc["specs"]
+    path = CACHE_DIR / "details.json"
+    cache = load_json(path, {})
+    probe: dict[str, list] = {}
+    fetched = pending = 0
+    try:
+        for e in events:  # 최신순
+            spec = specs.get(e["category"])
+            if not spec:
+                continue
+            rn = e["rcept_no"]
+            if rn in cache:
+                continue
+            if fetched >= dc["max_docs_per_run"]:
+                pending += 1
+                continue
+            text, err = dart_document(rn)
+            fetched += 1
+            if text is None:
+                cache[rn] = {"err": err}
+                continue
+            rows = doc_rows(text)
+            det = extract_detail(rows, spec)
+            cache[rn] = det
+            if dc.get("probe") and len(probe.setdefault(e["category"], [])) < dc.get("probe_per_category", 2):
+                probe[e["category"]].append({"rcept_no": rn, "report_nm": e["report_nm"], "corp_name": e["corp_name"],
+                                             "extracted": det, "rows": [r[:6] for r in rows[:150]]})
+            if fetched % 100 == 0:
+                log(f"공시 원문 {fetched}건 처리…")
+                save_json(path, cache)
+    except OutOfTime:
+        warn("시간 제한으로 공시 세부내용 수집을 중간에 멈췄습니다 — 다음 실행에서 이어서 수집합니다.")
+    except DartError as ex:
+        warn(f"공시 세부내용 수집 중단: {ex}")
+    save_json(path, cache)
+    if pending:
+        warn(f"공시 세부내용 미수집 {pending}건 — 다음 실행에서 이어서 수집합니다.")
+
+    # 카테고리별 추출 성공률 (검증용)
+    hit: dict[str, dict] = {}
+    for e in events:
+        det = cache.get(e["rcept_no"])
+        if det is None or not specs.get(e["category"]):
+            continue
+        h = hit.setdefault(e["category"], {"원문": 0, "오류": 0, "금액": 0})
+        if "err" in det:
+            h["오류"] += 1
+            continue
+        e["detail"] = det
+        h["원문"] += 1
+        h["금액"] += det["amount"] is not None
+        for label, _ in det["dates"]:
+            h[label] = h.get(label, 0) + 1
+        for label, _ in det["texts"]:
+            h[label] = h.get(label, 0) + 1
+    STATS["detail_hits"] = hit
+    if dc.get("probe"):
+        save_json(OUT_PATH.parent / "probe.json", probe)
+    log(f"공시 원문 신규 {fetched}건 처리")
+
+
+def fmt_event_detail(e: dict) -> str:
+    det = e.get("detail")
+    if not det:
+        return ""
+    parts = []
+    if det.get("amount"):
+        parts.append(f"{det['amount_label']} {eok(det['amount'])}" if det["amount"] >= 1e8
+                     else f"{det['amount_label']} {det['amount']:,}원")
+    parts += [f"{k} {v}" for k, v in det.get("dates", [])[:2]]
+    return ", ".join(parts)
+
+
 # ───────────────────────── 점수·분류 ─────────────────────────
 def pct_rank(values: dict) -> dict:
     items = sorted(((k, v) for k, v in values.items() if v is not None), key=lambda x: x[1])
@@ -583,7 +788,8 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
         points = []
         for e in evs[:3]:
             d = f"{e['date'][:4]}.{e['date'][4:6]}.{e['date'][6:]}"
-            points.append(f"{d} {e['category']} 공시 — {e['hint']}")
+            extra = fmt_event_detail(e)
+            points.append(f"{d} {e['category']} 공시{f' ({extra})' if extra else ''} — {e['hint']}")
         if m:
             f = fins[cc]
             line = f"순현금 {eok(m['net_cash'])} (현금성 {eok(m['cash_total'])} − 차입 {eok(f['borrowings'])})"
@@ -591,7 +797,9 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
                 line += f", 자산 대비 현금 {m['cash_ratio']:.0%}"
             points.append(line)
             if m["cash_growth"] is not None and abs(m["cash_growth"]) >= 0.3:
-                points.append(f"현금성자산 전기말 대비 {m['cash_growth']:+.0%} 변동")
+                g = m["cash_growth"]
+                gtxt = "+500% 초과" if g > 5 else f"{g:+.0%}"
+                points.append(f"현금성자산 전기말 대비 {gtxt} 변동 (전기말 {eok(fins[cc]['cash_prev'])} → {eok(fins[cc]['cash'])})")
         else:
             points.append("DART 재무 미확보 — 공시·뉴스 기반으로만 판단")
         seg_info = seg_by_id.get(seg, {})
@@ -753,6 +961,8 @@ def main() -> int:
     log(f"분석 대상 {len(universe):,}개사 (관심법인 {len(watch)}개)")
 
     fins = update_financials(universe)
+    if CFG.get("details", {}).get("enabled"):
+        update_details(events)
     companies = score_companies(universe, fins, events)
     topics, news_source = collect_news(companies)
     rates = fetch_rates()
@@ -780,6 +990,8 @@ def main() -> int:
         "fin_calls": STATS["fin_calls"],
         "fin_ok": sum(1 for c in companies if c["fin"]),
         "detail_filter": STATS["detail_filter"],
+        "doc_calls": STATS.get("doc_calls", 0),
+        "detail_hits": STATS.get("detail_hits", {}),
     }
     save_json(OUT_PATH, out)
     summary = (f"공시 {coverage}일·{len(events):,}건 / 법인 {len(companies):,}개(재무 {out['meta']['stats']['fin_ok']}) / "

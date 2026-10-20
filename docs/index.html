@@ -179,6 +179,14 @@ tbody tr.click:hover{background:var(--surface-2)}
 .kv b{font-variant-numeric:tabular-nums}
 @media (max-width:520px){.kv{grid-template-columns:1fr}.kv div:nth-child(even){padding-left:0;border-left:0}.kv div:nth-child(odd){padding-right:0}}
 .points{margin:0;padding-left:18px}
+.dartbtn{display:inline-block;font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:var(--surface);white-space:nowrap}
+.dartbtn:hover{text-decoration:none;border-color:var(--accent)}
+.evkv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px;margin-top:6px}
+.evkv span{color:var(--ink-2)} .evkv b{font-variant-numeric:tabular-nums;font-weight:600}
+.evbox{padding:10px 0;border-bottom:1px solid var(--line)} .evbox:last-child{border-bottom:0}
+.evhead{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.sched .dt{font-weight:700;font-variant-numeric:tabular-nums;min-width:46px}
+.sched .dd{font-size:11.5px;color:var(--ink-3)}
 .points li{margin:4px 0}
 .chartbox{position:relative}
 .chartbox svg{display:block;width:100%;height:auto}
@@ -217,6 +225,10 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="sub" id="brief-sub"></p>
     <div class="grid g4" id="kpis"></div>
     <div class="rates" id="rates"></div>
+    <div class="card" style="margin-bottom:14px">
+      <h3>다가오는 자금 일정 <span class="sub" style="font-weight:400">공시 원문 기준 · 향후 30일 납입·지급·양수도 예정일</span></h3>
+      <div class="list sched" id="sched"></div>
+    </div>
     <div class="grid g2">
       <div class="card">
         <h3>신규 자금 시그널 <span class="sub" style="font-weight:400">최근 14일 유입 공시 · 점수순</span></h3>
@@ -301,7 +313,7 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const eok = n => n == null ? "-" : `${Math.round(n / 1e8).toLocaleString("ko-KR")}억`;
-const pct = (x, sign) => x == null ? "-" : `${sign && x > 0 ? "+" : ""}${(x * 100).toFixed(0)}%`;
+const pct = (x, sign) => x == null ? "-" : (sign && x > 5) ? "+500%↑" : `${sign && x > 0 ? "+" : ""}${(x * 100).toFixed(0)}%`;
 const dfmt = s => s ? `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}` : "";
 const dshort = s => s ? `${s.slice(4,6)}.${s.slice(6,8)}` : "";
 const ymd = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
@@ -312,6 +324,27 @@ const relTime = iso => {
   if (m < 60) return `${Math.max(m,1)}분 전`;
   if (m < 1440) return `${Math.round(m/60)}시간 전`;
   return `${Math.round(m/1440)}일 전`;
+};
+const DART_LINK = (e, label) => e.url
+  ? `<a class="dartbtn" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${label || "DART 원문"} ↗</a>` : "";
+const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const amtTxt = (det) => det && det.amount ? (det.amount >= 1e8 ? eok(det.amount) : `${det.amount.toLocaleString()}원`) : "";
+const evBrief = e => {  // 한 줄 요약: 금액 · 첫 일정
+  const d = e.detail; if (!d) return "";
+  const p = [];
+  if (d.amount) p.push(`${esc(d.amount_label)} <b>${amtTxt(d)}</b>`);
+  if (d.dates?.[0]) p.push(`${esc(d.dates[0][0])} ${esc(d.dates[0][1].slice(5).replace("-", "."))}`);
+  return p.join(" · ");
+};
+const evFull = e => {  // 상세: 금액 + 모든 일정 + 기타
+  const d = e.detail;
+  if (!d) return `<div class="meta">세부내용 미수집 — DART 원문에서 확인</div>`;
+  const items = [];
+  if (d.amount) items.push([d.amount_label + " 금액", amtTxt(d)]);
+  (d.dates || []).forEach(([k, v]) => items.push([k, v]));
+  (d.texts || []).forEach(([k, v]) => items.push([k, typeof v === "number" ? v.toLocaleString() : v]));
+  return items.length ? `<div class="evkv">${items.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join("")}</div>`
+                      : `<div class="meta">원문에서 금액·일정을 찾지 못함 — DART 원문에서 확인</div>`;
 };
 const SEG_LABEL = {short:"단기 집행대기", mid:"중기 운용", long:"구조적 여유", watch:"모니터링"};
 const segTag = s => `<span class="tag seg-${s}">${SEG_LABEL[s] || s}</span>`;
@@ -408,9 +441,31 @@ function renderBrief() {
   $("#signals").innerHTML = sig.slice(0, 10).map(({e, c}) => `
     <div class="li click" data-co="${esc(c.corp_code)}">
       <div><div class="t">${esc(c.name)} ${c.watch ? '<span class="tag gray">관심</span>' : ""}</div>
-      <div class="d">${typeTag(e.type)} ${esc(e.category)} · ${dfmt(e.date)}</div></div>
+      <div class="d">${typeTag(e.type)} ${esc(e.category)} · ${dfmt(e.date)}${evBrief(e) ? " · " + evBrief(e) : ""}</div></div>
       <div class="r">${scoreCell(c.score)}<div style="margin-top:4px">${segTag(c.segment)}</div></div>
     </div>`).join("") || `<div class="empty">최근 14일 유입 공시가 없습니다.</div>`;
+
+  // 다가오는 일정: 이벤트 원문에서 뽑은 날짜 중 오늘~30일 이내 (기간 종료일은 제외)
+  const t0 = todayIso(), t30 = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
+  const sched = [];
+  const seenS = new Set();
+  D.events.forEach(e => (e.detail?.dates || []).forEach(([k, v]) => {
+    if (v >= t0 && v <= t30 && !/종료|만기/.test(k)) {
+      const key = e.corp_code + e.category + k + v;
+      if (!seenS.has(key)) { seenS.add(key); sched.push({e, k, v}); }
+    }
+  }));
+  sched.sort((a, b) => a.v.localeCompare(b.v) || (b.e.detail.amount || 0) - (a.e.detail.amount || 0));
+  const wd = v => "일월화수목금토"[new Date(v + "T00:00:00").getDay()];
+  $("#sched").innerHTML = sched.slice(0, 12).map(({e, k, v}) => `
+    <div class="li click" data-co="${esc(e.corp_code)}">
+      <div class="dt">${v.slice(5).replace("-", ".")}<div class="dd">${wd(v)}요일</div></div>
+      <div><div class="t">${esc(e.corp_name)} <span class="tag gray">${esc(k)}</span></div>
+      <div class="d">${typeTag(e.type)} ${esc(e.category)}${e.detail.amount ? ` · ${esc(e.detail.amount_label)} <b>${amtTxt(e.detail)}</b>` : ""}</div></div>
+      <div class="r">${DART_LINK(e)}</div>
+    </div>`).join("") || `<div class="empty">향후 30일 내 예정된 일정이 없거나, 아직 공시 원문 수집 전입니다.</div>`;
+  if (sched.length > 12) $("#sched").insertAdjacentHTML("beforeend", `<div class="meta" style="padding-top:8px">외 ${sched.length - 12}건 — 자금 동향 탭에서 전체 확인</div>`);
+  bindCo($("#sched"));
 
   const news = (D.topics || []).flatMap(t => t.items.map(i => ({...i, kw: t.keyword})));
   const uniq = [...new Map(news.map(n => [n.url, n])).values()].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -457,14 +512,15 @@ function renderFlow() {
 
   const LIMIT = 400;
   $("#ev-count").textContent = `${rows.length.toLocaleString()}건${rows.length > LIMIT ? ` (상위 ${LIMIT}건 표시)` : ""}`;
-  $("#evTable").innerHTML = `<thead><tr><th>일자</th><th>구분</th><th>유형</th><th>법인</th><th class="hide-m">시장</th><th class="num">점수</th><th>공시</th></tr></thead><tbody>${
+  $("#evTable").innerHTML = `<thead><tr><th>일자</th><th>구분</th><th>유형</th><th>법인</th><th class="hide-m">시장</th><th class="num">점수</th><th>주요 내용</th><th>공시</th></tr></thead><tbody>${
     rows.slice(0, LIMIT).map(e => {
       const c = CO_BY_CODE[e.corp_code];
       return `<tr class="click" data-co="${esc(e.corp_code)}"><td>${dfmt(e.date)}</td><td>${typeTag(e.type)}</td><td>${esc(e.category)}</td>
       <td><b>${esc(e.corp_name)}</b></td><td class="hide-m">${{Y:"유가",K:"코스닥",N:"코넥스"}[e.corp_cls] || "기타"}</td>
       <td class="num">${c ? c.score.toFixed(0) : "-"}</td>
-      <td class="wrap">${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(e.report_nm)}</a>` : esc(e.report_nm)}</td></tr>`;
-    }).join("") || `<tr><td colspan="7" class="empty">조건에 맞는 공시가 없습니다.</td></tr>`}</tbody>`;
+      <td>${evBrief(e) || '<span class="meta">-</span>'}</td>
+      <td class="wrap">${esc(e.report_nm)} ${DART_LINK(e, "원문")}</td></tr>`;
+    }).join("") || `<tr><td colspan="8" class="empty">조건에 맞는 공시가 없습니다.</td></tr>`}</tbody>`;
   bindCo($("#evTable"));
 }
 function drawFlowChart() {
@@ -645,9 +701,11 @@ function openCompany(code) {
           <div><span>영업활동현금흐름</span><b>${eok(f.ocf)}</b></div><div><span>매출 (누적)</span><b>${eok(f.revenue)}</b></div>
         </div>` : `<div class="sub" style="margin:0">DART API에서 재무를 확보하지 못했습니다.</div>`}</div>
       <div class="card"><h3>자금 공시 <span class="sub" style="font-weight:400">최근 ${D.meta.lookback_days}일 ${evs.length}건</span></h3>
-        <div class="list">${evs.map(e => `<div class="li"><div><div class="t">${typeTag(e.type)} ${esc(e.category)}</div>
-          <div class="d">${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.report_nm)}</a>` : esc(e.report_nm)}</div>
-          <div class="meta">${esc(e.hint)}</div></div><div class="r meta">${dfmt(e.date)}</div></div>`).join("") || `<div class="empty">공시 없음</div>`}</div></div>
+        <div>${evs.map(e => `<div class="evbox">
+          <div class="evhead"><div><div class="t">${typeTag(e.type)} <b>${esc(e.category)}</b> <span class="meta">${dfmt(e.date)} 공시</span></div>
+          <div class="d" style="font-size:12.5px;color:var(--ink-2);margin-top:2px">${esc(e.report_nm)}</div></div>${DART_LINK(e)}</div>
+          ${evFull(e)}
+          <div class="meta" style="margin-top:4px">${esc(e.hint)}</div></div>`).join("") || `<div class="empty">공시 없음</div>`}</div></div>
       <div class="card"><h3>관련 뉴스</h3>
         <div class="list">${(c.news || []).map(n => newsItem(n)).join("") || `<div class="sub" style="margin:0">수집된 기사가 없습니다 (점수 상위 법인만 수집).</div>`}</div></div>
     </div>`;
