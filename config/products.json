@@ -1,33 +1,29 @@
 {
-  "_설명": "자금 성격별 추천 상품군. products 배열에 사내 실제 상품명으로 바꿔 넣으면 화면에 그대로 표시됩니다.",
+  "_설명": "자금 성격 분류(단기·중기·장기·모니터링). 분류 기준값은 config.json 의 segments 에서 조정",
   "segments": [
     {
       "id": "short",
-      "name": "단기 집행대기 자금",
+      "name": "단기",
       "horizon": "~3개월",
-      "condition": "최근 90일 내 자금 유입 공시(조달·매각)",
-      "products": ["MMF", "MMW", "RP", "발행어음"]
+      "condition": "최근 90일 내 자금 유입 공시(조달·매각)"
     },
     {
       "id": "mid",
-      "name": "중기 운용 자금",
+      "name": "중기",
       "horizon": "3~12개월",
-      "condition": "순현금 보유, 현금/자산 비중 15% 미만",
-      "products": ["전단채·CP", "단기 우량 회사채", "법인 랩"]
+      "condition": "순현금 보유, 현금/자산 비중 15% 미만"
     },
     {
       "id": "long",
-      "name": "구조적 여유자금",
+      "name": "장기",
       "horizon": "1년 이상",
-      "condition": "순현금 보유, 현금/자산 비중 15% 이상",
-      "products": ["회사채·국채", "채권형 펀드", "ELB"]
+      "condition": "순현금 보유, 현금/자산 비중 15% 이상"
     },
     {
       "id": "watch",
       "name": "모니터링",
       "horizon": "-",
-      "condition": "순차입 상태 또는 재무 미확보",
-      "products": []
+      "condition": "순차입 상태 또는 재무 미확보"
     }
   ]
 }

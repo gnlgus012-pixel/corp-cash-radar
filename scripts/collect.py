@@ -1002,9 +1002,6 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
                 points.append(f"현금성자산 전기말 대비 {gtxt} 변동 (전기말 {eok(fins[cc]['cash_prev'])} → {eok(fins[cc]['cash'])})")
         else:
             points.append("DART 재무 미확보 — 공시·뉴스 기반으로만 판단")
-        seg_info = seg_by_id.get(seg, {})
-        if seg_info.get("products"):
-            points.append(f"제안 상품군: {', '.join(seg_info['products'])}")
 
         out.append({
             **c,

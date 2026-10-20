@@ -131,6 +131,8 @@ tbody tr.click:hover{background:var(--surface-2)}
 .seg-btns{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
 .seg-btns button{background:none;border:0;padding:6px 11px;cursor:pointer;color:var(--ink-2)}
 .seg-btns button.on{background:var(--ink);color:var(--surface)}
+.dirbtn{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--ink);font-weight:600}
+.dirbtn:hover{border-color:var(--accent)}
 .count{font-size:12.5px;color:var(--ink-3);margin-left:auto}
 
 .list{display:flex;flex-direction:column}
@@ -151,8 +153,6 @@ tbody tr.click:hover{background:var(--surface-2)}
 .segcard .hz{font-size:12px;color:var(--ink-3);font-weight:500}
 .segcard .cond{font-size:12.5px;color:var(--ink-2);margin:-4px 0 10px}
 .segcard .big{font-size:26px;font-weight:700;letter-spacing:-.6px}
-.prods{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 12px}
-.prod{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:4px 9px;font-size:12.5px;font-weight:600}
 
 .empty{padding:28px;text-align:center;color:var(--ink-3)}
 .disclaimer{font-size:12px;color:var(--ink-3);margin-top:14px}
@@ -211,7 +211,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <button data-tab="brief" class="on">브리핑</button>
     <button data-tab="flow">자금 동향</button>
     <button data-tab="screen">여유자금 법인</button>
-    <button data-tab="prod">추천 상품</button>
+    <button data-tab="prod">자금 성격별</button>
     <button data-tab="issue">주요 이슈</button>
   </nav>
 </header>
@@ -266,6 +266,8 @@ tbody tr.click:hover{background:var(--surface-2)}
       <select id="f-cat"><option value="">모든 유형</option></select>
       <select id="f-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
       <input type="text" id="f-q" placeholder="법인명·보고서명">
+      <label>정렬 <select id="f-sort"><option value="date">공시일</option><option value="amount">금액</option><option value="sched">일정(납입·지급일)</option><option value="score">점수</option><option value="name">법인명</option><option value="cat">유형</option></select></label>
+      <button class="dirbtn" id="f-dir" title="오름차순/내림차순 전환">↓ 내림차순</button>
       <span class="count" id="ev-count"></span>
     </div>
     <div class="tw"><table id="evTable"></table></div>
@@ -288,12 +290,11 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="disclaimer">재무는 DART 최근 정기보고서 기준이며 차입금은 계정명 기반 근사치입니다. 상세 화면의 기준 보고서를 함께 확인하세요.</p>
   </section>
 
-  <!-- 추천 상품 -->
+  <!-- 자금 성격별 -->
   <section class="tab" id="t-prod">
-    <h2>자금 성격별 추천 상품</h2>
-    <p class="sub">자금 유입 시점·순현금·현금비중으로 법인을 분류하고 상품군을 매칭합니다.</p>
+    <h2>자금 성격별 법인</h2>
+    <p class="sub">자금 유입 시점·순현금·현금비중으로 예상 운용기간을 나눴습니다. 점수순.</p>
     <div class="grid g3" id="segcards"></div>
-    <p class="disclaimer">내부 영업 참고용입니다. 실제 권유 시 투자자 정보 확인과 적합성·적정성 원칙을 따라야 합니다.</p>
   </section>
 
   <!-- 주요 이슈 -->
@@ -330,13 +331,15 @@ const DART_LINK = (e, label) => e.url
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const amtTxt = (det) => det && det.amount ? (det.amount >= 1e8 ? eok(det.amount) : `${det.amount.toLocaleString()}원`) : "";
 const OLD_TAG = e => e.detail?.old ? `<span class="tag gray" title="과거에 낸 공시를 정정한 것 — 신규 자금 유입으로 보지 않음">과거공시 정정 (최초 ${esc(e.detail.first_filed)})</span>` : "";
+// 올해 날짜는 MM.DD, 다른 해는 YY.MM.DD
+const sdate = v => v.slice(0, 4) === String(new Date().getFullYear()) ? v.slice(5).replace("-", ".") : v.slice(2).replaceAll("-", ".");
 const evBrief = e => {  // 한 줄 요약: 금액 · 첫 일정
   const d = e.detail; if (!d) return "";
   const p = [];
   if (d.old) p.push(OLD_TAG(e));
   if (d.superseded_by && !d.old) p.push(`<span class="tag gray" title="같은 건이 이후 공시로 정정됨 — 최신 공시 기준으로 보세요">이후 정정됨</span>`);
   if (d.amount) p.push(`${esc(d.amount_label)} <b>${amtTxt(d)}</b>`);
-  if (d.dates?.[0]) p.push(`${esc(d.dates[0][0])} ${esc(d.dates[0][1].slice(5).replace("-", "."))}`);
+  if (d.dates?.[0]) p.push(`${esc(d.dates[0][0])} ${esc(sdate(d.dates[0][1]))}`);
   return p.join(" · ");
 };
 const evFull = e => {  // 상세: 금액 + 모든 일정 + 기타
@@ -349,14 +352,14 @@ const evFull = e => {  // 상세: 금액 + 모든 일정 + 기타
   return items.length ? `<div class="evkv">${items.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join("")}</div>`
                       : `<div class="meta">원문에서 금액·일정을 찾지 못함 — DART 원문에서 확인</div>`;
 };
-const SEG_LABEL = {short:"단기 집행대기", mid:"중기 운용", long:"구조적 여유", watch:"모니터링"};
+const SEG_LABEL = {short:"단기", mid:"중기", long:"장기", watch:"모니터링"};
 const segTag = s => `<span class="tag seg-${s}">${SEG_LABEL[s] || s}</span>`;
 const typeTag = t => `<span class="tag ${t === "유입" ? "in" : "out"}">${esc(t)}</span>`;
 const scoreCell = s => `<span class="score">${s.toFixed(0)}<span class="bar"><i style="width:${Math.min(s,100)}%"></i></span></span>`;
 
 let D, EV_BY_ID = {}, CO_BY_CODE = {};
 const st = {
-  ev: {period: 30, type: "", cat: "", mkt: "", q: ""},
+  ev: {period: 30, type: "", cat: "", mkt: "", q: "", sort: "date", dir: -1},
   sc: {mkt: "", seg: "", min: 0, fin: false, watch: false, q: "", sort: "score", dir: -1},
   topic: 0,
 };
@@ -422,7 +425,7 @@ function renderBrief() {
     {c:"in", l:"자금 유입 공시", v:inN, u:"건", n:"최근 7일 · 증자·사채·매각"},
     {c:"out", l:"자금 유출 공시", v:outN, u:"건", n:"최근 7일 · 자사주·투자·인수"},
     {c:"", l:"고득점 여유자금 법인", v:hi, u:"개사", n:"점수 70점 이상"},
-    {c:"", l:"단기 집행대기 법인", v:D.companies.filter(c=>c.segment==="short").length, u:"개사", n:"MMF·RP 제안 대상"},
+    {c:"", l:"단기 자금 법인", v:D.companies.filter(c=>c.segment==="short").length, u:"개사", n:"최근 90일 자금 유입 공시"},
   ].map(k => `<div class="card kpi ${k.c}"><div class="lbl">${k.l}</div><div class="val">${k.v.toLocaleString()}<small>${k.u}</small></div><div class="note">${k.n}</div></div>`).join("");
 
   $("#rates").innerHTML = (D.rates || []).map(r => {
@@ -489,6 +492,8 @@ function initFlow() {
   $("#f-cat").onchange = e => { st.ev.cat = e.target.value; renderFlow(); };
   $("#f-mkt").onchange = e => { st.ev.mkt = e.target.value; renderFlow(); };
   $("#f-q").oninput = e => { st.ev.q = e.target.value.trim(); renderFlow(); };
+  $("#f-sort").onchange = e => { st.ev.sort = e.target.value; st.ev.dir = EV_COLS[e.target.value].def; renderFlow(); };
+  $("#f-dir").onclick = () => { st.ev.dir *= -1; renderFlow(); };
   renderFlow();
 }
 function segBtns(sel, cb) {
@@ -496,12 +501,33 @@ function segBtns(sel, cb) {
     $$(sel + " button").forEach(x => x.classList.toggle("on", x === b)); cb(b.dataset.v);
   });
 }
+// 정렬 기준: v = 값, def = 처음 눌렀을 때 방향(-1 내림차순, 1 오름차순)
+const firstSched = e => (e.detail?.dates || []).find(([k]) => /납입|지급|양수|양도|시작/.test(k))?.[1];
+const EV_COLS = {
+  date:   {l: "일자",   v: e => e.date + e.rcept_no, def: -1},
+  type:   {l: "구분",   v: e => e.type, def: 1},
+  cat:    {l: "유형",   v: e => e.category, def: 1},
+  name:   {l: "법인",   v: e => e.corp_name, def: 1},
+  mkt:    {l: "시장",   v: e => e.corp_cls, def: 1},
+  score:  {l: "점수",   v: e => CO_BY_CODE[e.corp_code]?.score, def: -1},
+  amount: {l: "주요 내용", v: e => e.detail?.amount, def: -1},
+  sched:  {l: "일정",   v: e => e.detail?.old || e.detail?.dup ? null : firstSched(e), def: 1},  // 과거 정정·이후 정정 건은 맨 뒤
+  report: {l: "공시",   v: e => e.report_nm, def: 1},
+};
 function renderFlow() {
   const f = st.ev, from = daysAgo(f.period), q = f.q.replace(/\s/g, "");
   const inPeriod = D.events.filter(e => e.date >= from);
   const rows = inPeriod.filter(e =>
     (!f.type || e.type === f.type) && (!f.cat || e.category === f.cat) && (!f.mkt || e.corp_cls === f.mkt) &&
     (!q || (e.corp_name + e.report_nm).replace(/\s/g, "").includes(q)));
+  const sv = EV_COLS[f.sort].v;
+  rows.sort((a, b) => {  // 값 없는 행은 방향과 관계없이 항상 맨 뒤
+    const va = sv(a), vb = sv(b);
+    if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+    return (typeof va === "string" ? va.localeCompare(vb, "ko") : va - vb) * f.dir;
+  });
+  $("#f-sort").value = f.sort;
+  $("#f-dir").textContent = f.dir > 0 ? "↑ 오름차순" : "↓ 내림차순";
 
   const byCat = {};
   inPeriod.forEach(e => { (byCat[e.category] ??= {type: e.type, n: 0}).n++; });
@@ -516,7 +542,8 @@ function renderFlow() {
 
   const LIMIT = 400;
   $("#ev-count").textContent = `${rows.length.toLocaleString()}건${rows.length > LIMIT ? ` (상위 ${LIMIT}건 표시)` : ""}`;
-  $("#evTable").innerHTML = `<thead><tr><th>일자</th><th>구분</th><th>유형</th><th>법인</th><th class="hide-m">시장</th><th class="num">점수</th><th>주요 내용</th><th>공시</th></tr></thead><tbody>${
+  const th = (k, cls = "") => `<th class="sort ${cls} ${f.sort === k ? (f.dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${EV_COLS[k].l}</th>`;
+  $("#evTable").innerHTML = `<thead><tr>${th("date")}${th("type")}${th("cat")}${th("name")}${th("mkt", "hide-m")}${th("score", "num")}${th("amount")}${th("report")}</tr></thead><tbody>${
     rows.slice(0, LIMIT).map(e => {
       const c = CO_BY_CODE[e.corp_code];
       return `<tr class="click" data-co="${esc(e.corp_code)}"><td>${dfmt(e.date)}</td><td>${typeTag(e.type)}</td><td>${esc(e.category)}</td>
@@ -525,6 +552,11 @@ function renderFlow() {
       <td>${evBrief(e) || '<span class="meta">-</span>'}</td>
       <td class="wrap">${esc(e.report_nm)} ${DART_LINK(e, "원문")}</td></tr>`;
     }).join("") || `<tr><td colspan="8" class="empty">조건에 맞는 공시가 없습니다.</td></tr>`}</tbody>`;
+  $$("#evTable th.sort").forEach(h => h.onclick = () => {
+    const k = h.dataset.k;
+    if (f.sort === k) f.dir *= -1; else { f.sort = k; f.dir = EV_COLS[k].def; }
+    renderFlow();
+  });
   bindCo($("#evTable"));
 }
 function drawFlowChart() {
@@ -614,7 +646,7 @@ function renderScreen() {
   bindCo($("#scTable"));
 }
 
-/* ── 추천 상품 ── */
+/* ── 자금 성격별 ── */
 function renderProducts() {
   $("#segcards").innerHTML = D.segments.filter(s => s.id !== "watch").map(s => {
     const cos = D.companies.filter(c => c.segment === s.id);
@@ -622,8 +654,7 @@ function renderProducts() {
       <h3>${segTag(s.id)} <span class="hz">${esc(s.horizon)}</span></h3>
       <div class="cond">${esc(s.condition)}</div>
       <div class="big">${cos.length.toLocaleString()}<small style="font-size:13px;color:var(--ink-3);font-weight:500"> 개사</small></div>
-      <div class="prods">${s.products.map(p => `<span class="prod">${esc(p)}</span>`).join("")}</div>
-      <div class="list">${cos.slice(0, 8).map(c => `
+      <div class="list" style="margin-top:10px">${cos.slice(0, 8).map(c => `
         <div class="li click" data-co="${esc(c.corp_code)}"><div><div class="t">${esc(c.name)}</div>
         <div class="d">${c.metrics ? `순현금 ${eok(c.metrics.net_cash)}` : "재무 미확보"}${c.last_event_date ? ` · ${dshort(c.last_event_date)} 공시` : ""}</div></div>
         <div class="r">${scoreCell(c.score)}</div></div>`).join("") || `<div class="empty">해당 법인 없음</div>`}</div>
@@ -694,8 +725,8 @@ function openCompany(code) {
         <div class="sd">${Object.keys(W).map(k => `<span>${SDL[k]}</span><span class="bar"><i style="width:${(sd[k] / W[k]) * 100}%"></i></span><b class="num" style="text-align:right">${sd[k].toFixed(0)}/${W[k]}</b>`).join("")}</div>
       </div>
       <div class="card"><h3>영업 포인트</h3><ul class="points">${c.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>
-      <div class="card"><h3>추천 상품 <span class="hz sub" style="font-weight:400">${esc(seg.name || "")} · ${esc(seg.horizon || "")}</span></h3>
-        ${seg.products?.length ? `<div class="prods" style="margin:0">${seg.products.map(p => `<span class="prod">${esc(p)}</span>`).join("")}</div>` : `<div class="sub" style="margin:0">해당 없음 — 모니터링 대상</div>`}</div>
+      <div class="card"><h3>자금 성격 ${segTag(c.segment)} <span class="hz sub" style="font-weight:400">${esc(seg.horizon || "")}</span></h3>
+        <div class="sub" style="margin:0">${esc(seg.condition || "")}</div></div>
       <div class="card"><h3>재무 요약 ${f ? `<span class="sub" style="font-weight:400">${esc(f.period)} · ${esc(f.fs)} · 원문 확인 권장</span>` : ""}</h3>
         ${f ? `<div class="kv">
           <div><span>현금및현금성자산</span><b>${eok(f.cash)}</b></div><div><span>단기금융상품</span><b>${eok(f.st_fin)}</b></div>
