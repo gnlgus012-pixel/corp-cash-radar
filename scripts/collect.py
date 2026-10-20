@@ -752,6 +752,8 @@ def update_details(events: list[dict]) -> None:
                 why = _anomaly(e, det)
                 if not why:
                     continue
+                if e["report_nm"].startswith("[발행조건확정]"):
+                    continue  # 금리만 정정된 신고서는 진단 가치가 낮음
                 key = f"{e['category']} | {why}"
                 if per.get(key, 0) >= dc.get("probe_anomaly_per_type", 3) or reprobe >= dc.get("probe_anomaly_max", 45):
                     continue

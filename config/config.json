@@ -462,7 +462,7 @@
         "key_date": "지급예정일"
       }
     },
-    "probe_anomaly_per_type": 3,
+    "probe_anomaly_per_type": 5,
     "probe_anomaly_max": 45,
     "_key_date_설명": "key_date: 실제 돈이 오가는 날. 공시일보다 60일 이상 과거면 '과거공시 정정'으로 보고 유입 점수·일정에서 제외. 시설투자는 진행 중 투자라 판정 안 함"
   }
