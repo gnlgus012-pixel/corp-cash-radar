@@ -702,7 +702,9 @@ def update_details(events: list[dict]) -> None:
     specs = dc["specs"]
     # 규칙(config)이나 추출 코드가 바뀌면 캐시된 원문을 다시 추출
     import hashlib
-    RULES_VER = hashlib.md5((json.dumps(specs, sort_keys=True, ensure_ascii=False) + "|parser-3").encode()).hexdigest()[:8]
+    RULES_VER = hashlib.md5((json.dumps({k: {kk: vv for kk, vv in v.items() if kk not in ("key_date", "merge_filings_days")}
+                                          for k, v in specs.items()}, sort_keys=True, ensure_ascii=False)
+                              + "|parser-3").encode()).hexdigest()[:8]
     path = CACHE_DIR / "details.json"
     cache = load_json(path, {})
     probe: dict[str, list] = {}
@@ -769,6 +771,39 @@ def update_details(events: list[dict]) -> None:
     if pending:
         warn(f"공시 세부내용 미수집 {pending}건 — 다음 실행에서 이어서 수집합니다.")
 
+    # 같은 회사의 연속 신고서(최초 → 수요예측 정정 → 발행조건확정) 묶기:
+    # 빠진 금액·일정은 묶음 안의 다른 신고서 값으로 채우고, 묶음당 최신 1건만 대표(dup=False)로 둔다.
+    merge_cats = {c for c, sp in specs.items() if sp.get("merge_filings_days")}
+    groups: dict[tuple, list] = {}
+    for e in sorted(events, key=lambda x: x["date"]):
+        if e["category"] not in merge_cats or "err" in cache.get(e["rcept_no"], {"err": 1}):
+            continue
+        win = specs[e["category"]]["merge_filings_days"]
+        key = (e["corp_code"], e["category"])
+        g = groups.setdefault(key, [])
+        if g and (date.fromisoformat(f"{e['date'][:4]}-{e['date'][4:6]}-{e['date'][6:]}")
+                  - date.fromisoformat(f"{g[-1][0]['date'][:4]}-{g[-1][0]['date'][4:6]}-{g[-1][0]['date'][6:]}")).days <= win:
+            g[-1].append(e)
+        else:
+            g.append([e])
+    merged_n = 0
+    for chains in groups.values():
+        for chain in chains:
+            dets = [cache[x["rcept_no"]] for x in chain]
+            amount = next((d["amount"] for d in reversed(dets) if d.get("amount")), None)
+            dates: dict = {}
+            for d in dets:  # 뒤 신고서 값이 우선
+                dates.update(dict(d.get("dates", [])))
+            for x in chain:
+                d = cache[x["rcept_no"]]
+                if d.get("amount") is None and amount:
+                    d["amount"] = amount
+                    merged_n += 1
+                d["dates"] = [[k, v] for k, v in dates.items()]
+                d["dup"] = x is not chain[-1]
+    if merged_n:
+        log(f"연속 신고서 묶음으로 금액 보완 {merged_n}건")
+
     # 카테고리별 추출 성공률 (검증용)
     hit: dict[str, dict] = {}
     for e in events:
@@ -782,16 +817,22 @@ def update_details(events: list[dict]) -> None:
             k = det["err"][:60]
             errs[k] = errs.get(k, 0) + 1
             continue
-        why = _anomaly(e, det)
-        if why:
-            h["이상:" + why] = h.get("이상:" + why, 0) + 1
+        # 과거 발행분 정정 판정: 실제 돈이 오가는 날(key_date)이 공시일보다 60일 이상 과거이면 과거 건.
+        # key_date가 없으면 정정공시이면서 최초제출일이 60일 이상 과거인 경우만 과거 건.
         pub = f"{e['date'][:4]}-{e['date'][4:6]}-{e['date'][6:]}"
-        det["old"] = bool(e["correction"] and det.get("first_filed")
-                          and det["first_filed"] < (date.fromisoformat(pub) - timedelta(days=60)).isoformat())
+        cut = (date.fromisoformat(pub) - timedelta(days=60)).isoformat()
+        kd = dict(det.get("dates", [])).get(specs[e["category"]].get("key_date", ""))
+        if kd:
+            det["old"] = kd < cut
+        else:
+            det["old"] = bool(e["correction"] and det.get("first_filed") and det["first_filed"] < cut)
         e["detail"] = det
         h["원문"] += 1
         if det["old"]:
             h["과거공시 정정"] = h.get("과거공시 정정", 0) + 1
+        why = _anomaly(e, det)
+        if why:
+            h["이상:" + why] = h.get("이상:" + why, 0) + 1
         h["금액"] += det["amount"] is not None
         for label, _ in det["dates"]:
             h[label] = h.get(label, 0) + 1
@@ -859,7 +900,7 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
     for cc, c in universe.items():
         evs = ev_by_corp.get(cc, [])
         m = metrics[cc]
-        live = [e for e in evs if not (e.get("detail") or {}).get("old")]
+        live = [e for e in evs if not (e.get("detail") or {}).get("old") and not (e.get("detail") or {}).get("dup")]
         inflow_cats = {e["category"] for e in live if e["type"] == "유입"}
         ev_pts = min(len(inflow_cats) * sc["points_per_inflow_category"], w["inflow_event"])
         detail = {
