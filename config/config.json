@@ -447,6 +447,8 @@
           ]
         ]
       }
-    }
+    },
+    "probe_anomaly_per_type": 3,
+    "probe_anomaly_max": 45
   }
 }

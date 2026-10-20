@@ -644,6 +644,34 @@ def dart_document(rcept_no: str) -> tuple[str | None, str]:
     return raw.decode("utf-8", "ignore"), ""
 
 
+def _probe_rows(rows: list[list[str]], spec: dict) -> list[list[str]]:
+    """검증용: 앞부분 40행 + 규칙 항목명이 들어간 행과 그 다음 행"""
+    rxs = [re.compile(x) for x in spec.get("amount_sum", []) + spec.get("amount", [])]
+    rxs += [re.compile(r) for _, r in spec.get("dates", [])] + [re.compile(t[1]) for t in spec.get("texts", [])]
+    keep = set(range(min(40, len(rows))))
+    for i, cells in enumerate(rows):
+        if any(rx.search(norm(" ".join(cells))) for rx in rxs):
+            keep |= {i, i + 1}
+    return [rows[i][:8] for i in sorted(keep) if i < len(rows)][:120]
+
+
+def _anomaly(e: dict, det: dict) -> str | None:
+    if "err" in det:
+        return None
+    pub = f"{e['date'][:4]}-{e['date'][4:6]}-{e['date'][6:]}"
+    a = det.get("amount")
+    if a is not None and a < 1e8 and e["category"] != "배당":
+        return "금액 1억 미만"
+    if a is not None and a > 2e13:
+        return "금액 20조 초과"
+    if a is None:
+        return "금액 없음"
+    old = (date.fromisoformat(pub) - timedelta(days=60)).isoformat()
+    if any(v < old for k, v in det.get("dates", []) if "종료" not in k and "만기" not in k and "기준" not in k):
+        return "일정이 공시일보다 60일 이상 과거"
+    return None
+
+
 def update_details(events: list[dict]) -> None:
     """이벤트별 금액·일정을 원문에서 추출해 event['detail']에 붙인다. 결과는 캐시(재수집 안 함)."""
     dc = CFG["details"]
@@ -673,7 +701,7 @@ def update_details(events: list[dict]) -> None:
             cache[rn] = det
             if dc.get("probe") and len(probe.setdefault(e["category"], [])) < dc.get("probe_per_category", 2):
                 probe[e["category"]].append({"rcept_no": rn, "report_nm": e["report_nm"], "corp_name": e["corp_name"],
-                                             "extracted": det, "rows": [r[:6] for r in rows[:150]]})
+                                             "date": e["date"], "extracted": det, "rows": _probe_rows(rows, spec)})
             if fetched % 100 == 0:
                 log(f"공시 원문 {fetched}건 처리…")
                 save_json(path, cache)
@@ -681,6 +709,32 @@ def update_details(events: list[dict]) -> None:
         warn("시간 제한으로 공시 세부내용 수집을 중간에 멈췄습니다 — 다음 실행에서 이어서 수집합니다.")
     except DartError as ex:
         warn(f"공시 세부내용 수집 중단: {ex}")
+    if dc.get("probe"):
+        reprobe = 0
+        per: dict[str, int] = {}
+        try:
+            for e in events:
+                det = cache.get(e["rcept_no"])
+                spec = specs.get(e["category"])
+                if not det or not spec:
+                    continue
+                why = _anomaly(e, det)
+                if not why:
+                    continue
+                key = f"{e['category']} | {why}"
+                if per.get(key, 0) >= dc.get("probe_anomaly_per_type", 3) or reprobe >= dc.get("probe_anomaly_max", 45):
+                    continue
+                text, err = dart_document(e["rcept_no"])
+                reprobe += 1
+                if text is None:
+                    continue
+                per[key] = per.get(key, 0) + 1
+                probe.setdefault("이상치: " + key, []).append(
+                    {"rcept_no": e["rcept_no"], "report_nm": e["report_nm"], "corp_name": e["corp_name"],
+                     "date": e["date"], "extracted": det, "rows": _probe_rows(doc_rows(text), spec)})
+        except (OutOfTime, DartError):
+            pass
+        log(f"이상치 원문 재조회 {reprobe}건")
     save_json(path, cache)
     if pending:
         warn(f"공시 세부내용 미수집 {pending}건 — 다음 실행에서 이어서 수집합니다.")
@@ -694,7 +748,13 @@ def update_details(events: list[dict]) -> None:
         h = hit.setdefault(e["category"], {"원문": 0, "오류": 0, "금액": 0})
         if "err" in det:
             h["오류"] += 1
+            errs = STATS.setdefault("detail_errors", {})
+            k = det["err"][:60]
+            errs[k] = errs.get(k, 0) + 1
             continue
+        why = _anomaly(e, det)
+        if why:
+            h["이상:" + why] = h.get("이상:" + why, 0) + 1
         e["detail"] = det
         h["원문"] += 1
         h["금액"] += det["amount"] is not None
@@ -992,6 +1052,7 @@ def main() -> int:
         "detail_filter": STATS["detail_filter"],
         "doc_calls": STATS.get("doc_calls", 0),
         "detail_hits": STATS.get("detail_hits", {}),
+        "detail_errors": STATS.get("detail_errors", {}),
     }
     save_json(OUT_PATH, out)
     summary = (f"공시 {coverage}일·{len(events):,}건 / 법인 {len(companies):,}개(재무 {out['meta']['stats']['fin_ok']}) / "
