@@ -8,9 +8,9 @@ on:
   push:                   # 수집 코드·설정을 고치면 바로 한 번 실행 (데이터 갱신 커밋으로는 실행 안 됨)
     branches: [main]
     paths:
-      - "scripts/**"
+      - "scripts/collect.py"
       - "config/**"
-      - ".github/workflows/**"
+      - ".github/workflows/daily.yml"
 
 permissions:
   contents: write

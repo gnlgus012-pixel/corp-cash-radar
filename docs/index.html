@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
 :root{
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
   --bg:#f4f5f7; --surface:#ffffff; --surface-2:#f8f9fb; --ink:#0f1b2d; --ink-2:#4a5568; --ink-3:#8a94a6;
   --line:#e3e6eb; --brand:#0f1b2d; --accent:#1f6feb;
   --in:#0e9f6e; --in-bg:#e6f6ef; --out:#d9480f; --out-bg:#fdeee6;
@@ -20,6 +21,7 @@
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
     --bg:#0b1220; --surface:#121a2b; --surface-2:#172136; --ink:#e7ecf3; --ink-2:#a9b4c6; --ink-3:#6f7c93;
     --line:#243049; --brand:#0b1220; --accent:#5b9bff;
     --in:#34d399; --in-bg:#0f2e25; --out:#fb8b5b; --out-bg:#35190f;
@@ -28,6 +30,7 @@
   }
 }
 :root[data-theme="dark"]{
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
   --bg:#0b1220; --surface:#121a2b; --surface-2:#172136; --ink:#e7ecf3; --ink-2:#a9b4c6; --ink-3:#6f7c93;
   --line:#243049; --brand:#0b1220; --accent:#5b9bff;
   --in:#34d399; --in-bg:#0f2e25; --out:#fb8b5b; --out-bg:#35190f;
@@ -80,7 +83,8 @@ h3{font-size:14.5px;margin:0 0 10px;letter-spacing:-.2px}
 .g4{grid-template-columns:repeat(4,1fr)}
 .g2{grid-template-columns:1.25fr 1fr}
 .g3{grid-template-columns:repeat(3,1fr)}
-@media (max-width:900px){.g4{grid-template-columns:repeat(2,1fr)}.g2,.g3{grid-template-columns:1fr}}
+.g2eq{grid-template-columns:1fr 1fr}
+@media (max-width:900px){.g4{grid-template-columns:repeat(2,1fr)}.g2,.g3,.g2eq{grid-template-columns:1fr}}
 
 .kpi .lbl{font-size:12px;color:var(--ink-2);font-weight:500}
 .kpi .val{font-size:28px;font-weight:700;letter-spacing:-.8px;margin-top:4px}
@@ -179,6 +183,23 @@ tbody tr.click:hover{background:var(--surface-2)}
 .kv b{font-variant-numeric:tabular-nums}
 @media (max-width:520px){.kv{grid-template-columns:1fr}.kv div:nth-child(even){padding-left:0;border-left:0}.kv div:nth-child(odd){padding-right:0}}
 .points{margin:0;padding-left:18px}
+.rgroup{margin:4px 0 14px}
+.rgroup h3{font-size:13px;color:var(--ink-2);margin:0 0 8px}
+.rtiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.rtile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.rtile .n{font-size:12px;color:var(--ink-2)}
+.rtile .v{font-size:20px;font-weight:700;margin-top:2px;letter-spacing:-.4px}
+.rtile .dd{font-size:11.5px;color:var(--ink-3);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap}
+.chartwrap{position:relative}
+.chartwrap svg{display:block;width:100%;height:auto;touch-action:pan-y}
+.lgd{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink-2);margin:-2px 0 6px}
+.lgd i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:6px;vertical-align:3px}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);display:none;white-space:nowrap;z-index:3}
+.tip .th{font-weight:700;margin-bottom:3px}
+.tip div{display:flex;align-items:center;gap:6px}
+.tip i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.tip b{margin-left:auto;padding-left:12px;font-variant-numeric:tabular-nums}
+.cnote{font-size:11.5px;color:var(--ink-3);margin-top:6px}
 .dartbtn{display:inline-block;font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:var(--surface);white-space:nowrap}
 .dartbtn:hover{text-decoration:none;border-color:var(--accent)}
 .evkv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px;margin-top:6px}
@@ -212,6 +233,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <button data-tab="flow">자금 동향</button>
     <button data-tab="screen">여유자금 법인</button>
     <button data-tab="prod">자금 성격별</button>
+    <button data-tab="rate">금리</button>
     <button data-tab="issue">주요 이슈</button>
   </nav>
 </header>
@@ -247,7 +269,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="sub">DART 공시 중 자금 유입·유출 이벤트 (유가·코스닥 + 관심법인)</p>
     <div class="grid g2" style="margin-bottom:14px">
       <div class="card">
-        <h3>주간 공시 건수</h3>
+        <h3 id="flowChartTitle">주간 공시 건수</h3>
         <div class="legend"><span><i style="background:var(--in)"></i>유입</span><span><i style="background:var(--out)"></i>유출</span></div>
         <div class="chartbox" id="flowChart"></div>
       </div>
@@ -258,7 +280,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     </div>
     <div class="filters">
       <div class="seg-btns" id="f-period">
-        <button data-v="7">7일</button><button data-v="30" class="on">30일</button><button data-v="90">90일</button>
+        <button data-v="7">7일</button><button data-v="30" class="on">30일</button><button data-v="90">90일</button><button data-v="180">6개월</button><button data-v="365">1년</button>
       </div>
       <div class="seg-btns" id="f-type">
         <button data-v="" class="on">전체</button><button data-v="유입">유입</button><button data-v="유출">유출</button>
@@ -298,6 +320,19 @@ tbody tr.click:hover{background:var(--surface-2)}
   </section>
 
   <!-- 주요 이슈 -->
+  <section class="tab" id="t-rate">
+    <h2>금리</h2>
+    <p class="sub" id="rate-sub">한국은행 ECOS 기준 · 국내 금리는 일별, 미국 금리는 월평균(ECOS 제공 주기)</p>
+    <div id="rateTiles"></div>
+    <div class="filters" style="margin-top:4px">
+      <div class="seg-btns" id="r-period">
+        <button data-v="90">3개월</button><button data-v="180">6개월</button><button data-v="365" class="on">1년</button><button data-v="1095">3년</button>
+      </div>
+      <span class="count">차트에 마우스를 올리거나 손가락으로 누르면 날짜별 값이 보입니다</span>
+    </div>
+    <div class="grid g2eq" id="rateCharts"></div>
+  </section>
+
   <section class="tab" id="t-issue">
     <h2>주요 이슈</h2>
     <p class="sub" id="issue-sub">키워드별 최신 뉴스</p>
@@ -399,7 +434,7 @@ function init(data) {
   if (D.meta.warnings?.length) b += `<details class="banner warn"><summary>수집 경고 ${D.meta.warnings.length}건</summary><ul>${D.meta.warnings.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>`;
   $("#banners").innerHTML = b;
 
-  renderBrief(); initFlow(); initScreen(); renderProducts(); renderIssues(); initSearch();
+  renderBrief(); initFlow(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
   $$("#nav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
   const h = location.hash.slice(1);
   if (h.startsWith("c=")) openCompany(h.slice(2)); else if (h) showTab(h);
@@ -411,6 +446,7 @@ function showTab(t) {
   $$("section.tab").forEach(s => s.classList.toggle("on", s.id === "t-" + t));
   history.replaceState(null, "", "#" + t);
   if (t === "flow") drawFlowChart();
+  if (t === "rate") drawRateCharts();
   window.scrollTo({top: 0});
 }
 
@@ -428,11 +464,11 @@ function renderBrief() {
     {c:"", l:"단기 자금 법인", v:D.companies.filter(c=>c.segment==="short").length, u:"개사", n:"최근 90일 자금 유입 공시"},
   ].map(k => `<div class="card kpi ${k.c}"><div class="lbl">${k.l}</div><div class="val">${k.v.toLocaleString()}<small>${k.u}</small></div><div class="note">${k.n}</div></div>`).join("");
 
-  $("#rates").innerHTML = (D.rates || []).map(r => {
+  $("#rates").innerHTML = (D.rates || []).filter(r => r.brief !== false && (r.brief || !r.key)).map(r => {
     const diff = r.prev == null ? null : Math.round((r.latest - r.prev) * 100);
     const cls = diff == null || diff === 0 ? "flat" : diff > 0 ? "up" : "dn";
     const dt = diff == null ? "" : `<span class="d ${cls}">${diff > 0 ? "▲" : diff < 0 ? "▼" : "–"}${Math.abs(diff)}bp</span>`;
-    return `<div class="rate"><div class="n">${esc(r.name)}</div><div class="v">${r.latest.toFixed(2)}%${dt}</div></div>`;
+    return `<div class="rate click" onclick="location.hash='rate'"><div class="n">${esc(r.name)}${r.cycle === "M" ? ` <span class="meta">${+r.date.slice(4)}월</span>` : ""}</div><div class="v">${r.latest.toFixed(2)}%${dt}</div></div>`;
   }).join("") || "";
   if (!D.rates?.length) $("#rates").style.display = "none";
 
@@ -562,15 +598,25 @@ function renderFlow() {
 function drawFlowChart() {
   const weeks = [];
   const today = new Date(); today.setHours(0,0,0,0);
-  const n = Math.ceil(D.meta.lookback_days / 7);
-  for (let i = n - 1; i >= 0; i--) {
-    const end = new Date(today); end.setDate(end.getDate() - i * 7);
-    const start = new Date(end); start.setDate(start.getDate() - 6);
-    weeks.push({s: ymd(start), e: ymd(end), lbl: `${start.getMonth()+1}/${start.getDate()}`, in: 0, out: 0});
+  const monthly = D.meta.lookback_days > 120;  // 기간이 길면 월별 막대
+  $("#flowChartTitle").textContent = monthly ? "월별 공시 건수" : "주간 공시 건수";
+  if (monthly) {
+    const first = new Date(today); first.setDate(first.getDate() - D.meta.lookback_days + 1);
+    for (let d = new Date(first.getFullYear(), first.getMonth(), 1); d <= today; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      weeks.push({s: ymd(d < first ? first : d), e: ymd(end), lbl: `${String(d.getFullYear()).slice(2)}.${d.getMonth()+1}`, in: 0, out: 0, m: 1});
+    }
+  } else {
+    const n = Math.ceil(D.meta.lookback_days / 7);
+    for (let i = n - 1; i >= 0; i--) {
+      const end = new Date(today); end.setDate(end.getDate() - i * 7);
+      const start = new Date(end); start.setDate(start.getDate() - 6);
+      weeks.push({s: ymd(start), e: ymd(end), lbl: `${start.getMonth()+1}/${start.getDate()}`, in: 0, out: 0});
+    }
   }
   D.events.forEach(ev => { const w = weeks.find(w => ev.date >= w.s && ev.date <= w.e); if (w) w[ev.type === "유입" ? "in" : "out"]++; });
   // 외부 라이브러리 없이 SVG로 그림 (사내망에서 CDN이 막혀도 동작)
-  const W = 600, H = 240, L = 30, R = 6, T = 8, B = 24;
+  const W = Math.max(300, Math.round($("#flowChart").clientWidth || 600)), H = W < 500 ? 200 : 240, L = 30, R = 6, T = 8, B = 24;
   const max = Math.max(1, ...weeks.map(w => Math.max(w.in, w.out)));
   const step = Math.max(1, Math.ceil(max / 4 / (max > 20 ? 5 : 1)) * (max > 20 ? 5 : 1));
   const top = Math.ceil(max / step) * step;
@@ -579,12 +625,12 @@ function drawFlowChart() {
   let s = "";
   for (let v = 0; v <= top; v += step)
     s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink-3)">${v}</text>`;
-  const every = weeks.length > 8 ? 2 : 1;
+  const every = Math.ceil(weeks.length / Math.max(4, Math.floor((W - L - R) / 52)));
   weeks.forEach((w, i) => {
     const cx = L + gw * i + gw / 2;
     [["in", -1], ["out", 1]].forEach(([k, side]) => {
       const v = w[k], x = cx + (side < 0 ? -bw - 1 : 1);
-      if (v) s += `<rect x="${x}" y="${y(v)}" width="${bw}" height="${y(0) - y(v)}" rx="2" fill="var(--${k})"><title>${w.lbl} 주 ${k === "in" ? "유입" : "유출"} ${v}건</title></rect>`;
+      if (v) s += `<rect x="${x}" y="${y(v)}" width="${bw}" height="${y(0) - y(v)}" rx="2" fill="var(--${k})"><title>${w.lbl}${w.m ? "월" : " 주"} ${k === "in" ? "유입" : "유출"} ${v}건</title></rect>`;
     });
     if (i % every === 0 || i === weeks.length - 1)
       s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="11" fill="var(--ink-3)">${w.lbl}</text>`;
@@ -665,6 +711,163 @@ function renderProducts() {
   $$("#segcards a[data-seg]").forEach(a => a.onclick = e => {
     e.preventDefault(); st.sc.seg = a.dataset.seg; $("#s-seg").value = a.dataset.seg; renderScreen(); showTab("screen");
   });
+}
+
+/* ── 금리 ── */
+const RCOL = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
+const rDate = t => t.length === 6 ? new Date(+t.slice(0, 4), +t.slice(4) - 1, 15) : new Date(+t.slice(0, 4), +t.slice(4, 6) - 1, +t.slice(6));
+const rLabel = t => t.length === 6 ? `${t.slice(0, 4)}.${t.slice(4)}` : `${t.slice(0, 4)}.${t.slice(4, 6)}.${t.slice(6)}`;
+let RATE = {}, ratePeriod = 365;
+
+function valueAt(series, t) {  // t 시점 이전 마지막 값 (기준금리처럼 변경일만 있는 계열 대응)
+  let v = null;
+  for (const [tt, vv] of series) { if (tt <= t) v = vv; else break; }
+  return v;
+}
+function bpTxt(d) {
+  if (d == null) return "";
+  const v = Math.round(d * 100);
+  return `<span class="${v > 0 ? "up" : v < 0 ? "dn" : "flat"}">${v > 0 ? "▲" : v < 0 ? "▼" : "–"}${Math.abs(v)}bp</span>`;
+}
+function rateTile(r) {
+  const s = r.series, last = s[s.length - 1];
+  const yearAgo = (() => { const d = rDate(last[0]); d.setFullYear(d.getFullYear() - 1);
+    const t = r.cycle === "M" ? `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}` : ymd(d); return valueAt(s, t); })();
+  return `<div class="rtile"><div class="n">${esc(r.name)}</div><div class="v">${r.latest.toFixed(2)}%</div>
+    <div class="dd"><span>${r.cycle === "M" ? "전월" : "전일"} ${bpTxt(r.prev == null ? null : r.latest - r.prev) || "-"}</span>
+    <span>1년 ${bpTxt(yearAgo == null ? null : r.latest - yearAgo) || "-"}</span></div>
+    <div class="dd">${rLabel(r.date)}${r.cycle === "M" ? " 월평균" : ""}</div></div>`;
+}
+function renderRates() {
+  if (!D.rates?.length) { $("#t-rate").insertAdjacentHTML("beforeend", `<div class="card empty">금리 데이터가 없습니다. ECOS API 키를 확인하세요.</div>`); return; }
+  D.rates.forEach(r => RATE[r.key || r.name] = r);
+  const groups = [["국내 단기금리 (일별)", "kr_short"], ["국내 채권금리 (일별)", "kr_bond"], ["미국 금리 (월평균)", "us"]];
+  let html = groups.map(([t, g]) => {
+    const rs = D.rates.filter(r => r.group === g);
+    return rs.length ? `<div class="rgroup"><h3>${t}</h3><div class="rtiles">${rs.map(rateTile).join("")}</div></div>` : "";
+  }).join("");
+  // 한미 금리차
+  const kp = RATE.base, up = RATE.us_policy, kl = RATE.kr_long_m, ul = RATE.us_long;
+  if (kp && up) {
+    const d1 = kp.latest - up.latest;
+    const d2 = kl && ul ? valueAt(kl.series, ul.date) - ul.latest : null;
+    html += `<div class="rgroup"><h3>한·미 금리차</h3><div class="rtiles">
+      <div class="rtile"><div class="n">정책금리 (한국 − 미국)</div><div class="v">${d1 > 0 ? "+" : ""}${Math.round(d1 * 100)}bp</div><div class="dd">한국 ${kp.latest.toFixed(2)}% · 미국 ${up.latest.toFixed(2)}% (${rLabel(up.date)})</div></div>
+      ${d2 != null ? `<div class="rtile"><div class="n">장기금리 10년 (한국 − 미국)</div><div class="v">${d2 > 0 ? "+" : ""}${Math.round(d2 * 100)}bp</div><div class="dd">${rLabel(ul.date)} 월평균 기준</div></div>` : ""}
+    </div></div>`;
+  }
+  $("#rateTiles").innerHTML = html;
+  segBtns("#r-period", v => { ratePeriod = +v; drawRateCharts(); });
+}
+
+const RATE_CHARTS = [
+  {id: "rc1", title: "국내 단기금리", keys: ["base", "call", "cd", "cp"], note: "기준금리는 변경일 기준 계단형"},
+  {id: "rc2", title: "국내 채권금리", keys: ["ktb3", "ktb10", "aa"]},
+  {id: "rc3", title: "신용스프레드 (회사채 AA- − 국고채 3년)", spread: ["aa", "ktb3"], unit: "bp"},
+  {id: "rc4", title: "한·미 정책금리", keys: ["kr_policy_m", "us_policy"], names: ["한국", "미국"], monthly: true},
+  {id: "rc5", title: "한·미 장기금리 (10년)", keys: ["kr_long_m", "us_long"], names: ["한국", "미국"], monthly: true},
+  {id: "rc6", title: "미국 금리", keys: ["us_policy", "us_short", "us_long"], names: ["정책금리", "단기(3개월)", "장기(10년)"], monthly: true},
+];
+function drawRateCharts() {
+  if (!D.rates?.length) return;
+  const today = new Date();
+  $("#rateCharts").innerHTML = RATE_CHARTS.map(c => `<div class="card"><h3>${esc(c.title)}</h3><div class="lgd" id="${c.id}-l"></div>
+    <div class="chartwrap" id="${c.id}"></div><div class="cnote" id="${c.id}-n"></div></div>`).join("");
+  RATE_CHARTS.forEach(c => {
+    const days = c.monthly ? Math.max(ratePeriod, 365) : ratePeriod;  // 월별 계열은 최소 1년
+    const from = new Date(today); from.setDate(from.getDate() - days);
+    let series;
+    if (c.spread) {
+      const [a, b] = c.spread.map(k => RATE[k]);
+      if (!a || !b) return;
+      const bm = new Map(b.series);
+      series = [{name: "스프레드", color: RCOL[0], pts: a.series.filter(([t]) => bm.has(t)).map(([t, v]) => [t, Math.round((v - bm.get(t)) * 100)])}];
+    } else {
+      series = c.keys.map((k, i) => RATE[k] && {name: c.names?.[i] || RATE[k].name, color: RCOL[i], step: k === "base", pts: RATE[k].series}).filter(Boolean);
+    }
+    series.forEach(sr => {  // 기간 자르기 (계단형은 기간 시작 직전 값부터)
+      const cut = sr.pts.findIndex(([t]) => rDate(t) >= from);
+      sr.pts = cut < 0 ? sr.pts.slice(-1) : sr.pts.slice(sr.step && cut > 0 ? cut - 1 : cut);
+      if (sr.step && sr.pts.length && rDate(sr.pts[0][0]) < from) sr.pts[0] = [ymd(from), sr.pts[0][1]];
+    });
+    lineChart(c, series.filter(sr => sr.pts.length), c.unit || "%");
+  });
+}
+
+function lineChart(c, series, unit) {
+  const el = $("#" + c.id);
+  if (!series.length) { el.innerHTML = `<div class="empty">데이터 없음</div>`; return; }
+  const W = Math.max(300, Math.round(el.clientWidth || 600)), H = W < 500 ? 220 : 250, L = 38, R = 58, T = 10, B = 26;  // 실제 픽셀 크기로 그려 글자 크기 유지
+  const fmt = v => unit === "bp" ? `${Math.round(v)}bp` : `${v.toFixed(2)}%`;
+  const all = series.flatMap(s => s.pts);
+  const xs = all.map(p => rDate(p[0]).getTime()), x0 = Math.min(...xs), x1 = Math.max(...xs, x0 + 864e5);
+  let lo = Math.min(...all.map(p => p[1])), hi = Math.max(...all.map(p => p[1]));
+  const span0 = (hi - lo) || (unit === "bp" ? 10 : 0.2);
+  const raw = span0 / 4, mag = 10 ** Math.floor(Math.log10(raw));
+  const stepv = [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= raw);
+  lo = Math.floor((lo - span0 * 0.05) / stepv) * stepv; hi = Math.ceil((hi + span0 * 0.05) / stepv) * stepv;
+  const X = t => L + (W - L - R) * (t - x0) / (x1 - x0);
+  const Y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  let g = "";
+  for (let v = lo; v <= hi + 1e-9; v += stepv)
+    g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink-3)">${unit === "bp" ? Math.round(v) : v.toFixed(stepv < 0.1 ? 2 : stepv < 1 ? 1 : 0)}</text>`;
+  // x축 눈금: 기간에 맞춰 월 단위
+  const months = (x1 - x0) / (30 * 864e5), slots = Math.max(3, Math.floor((W - L - R) / 42));
+  const every = [1, 2, 3, 6, 12].find(m => months / m <= slots) || 12;
+  for (let d = new Date(new Date(x0).getFullYear(), new Date(x0).getMonth() + 1, 1); d.getTime() <= x1; d.setMonth(d.getMonth() + every)) {
+    const x = X(d.getTime());
+    g += `<line x1="${x}" x2="${x}" y1="${H - B}" y2="${H - B + 4}" stroke="var(--line)"/><text x="${x}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--ink-3)">${d.getMonth() === 0 || every >= 6 ? `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}` : `${d.getMonth() + 1}월`}</text>`;
+  }
+  // 선
+  series.forEach(sr => {
+    let dpath = "";
+    sr.pts.forEach(([t, v], i) => {
+      const x = X(rDate(t).getTime()), y = Y(v);
+      if (i === 0) dpath += `M${x},${y}`;
+      else dpath += sr.step ? `H${x}V${y}` : `L${x},${y}`;
+    });
+    if (sr.step) dpath += `H${X(x1)}`;
+    g += `<path d="${dpath}" fill="none" stroke="${sr.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  });
+  // 끝 값 직접 표기 (겹치면 위아래로 밀어냄)
+  const ends = series.map(sr => ({sr, v: sr.pts[sr.pts.length - 1][1], y: Y(sr.pts[sr.pts.length - 1][1])})).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+  ends.forEach(e => {
+    const lastX = X(rDate(e.sr.pts[e.sr.pts.length - 1][0]).getTime());
+    g += `<circle cx="${e.sr.step ? X(x1) : lastX}" cy="${Y(e.v)}" r="3" fill="${e.sr.color}" stroke="var(--surface)" stroke-width="2"/>`;
+    g += `<text x="${W - R + 6}" y="${e.y + 4}" font-size="11.5" font-weight="600" fill="var(--ink)">${fmt(e.v)}</text>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.title)}">${g}
+    <line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="3 3" visibility="hidden"/>
+    <g class="dots"></g><rect class="hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="tip"></div>`;
+  $("#" + c.id + "-l").innerHTML = series.length > 1 ? series.map(sr => `<span><i style="background:${sr.color}"></i>${esc(sr.name)}</span>`).join("") : "";
+  const last = series.map(sr => sr.pts[sr.pts.length - 1][0]).sort().pop();
+  $("#" + c.id + "-n").textContent = [c.note, `최근값 ${rLabel(last)}${c.monthly ? " 월평균" : ""}`].filter(Boolean).join(" · ");
+
+  // 호버: 가장 가까운 날짜의 값
+  const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = svg.querySelector(".xh"), dots = svg.querySelector(".dots");
+  const times = [...new Set(all.map(p => p[0]))].sort();
+  const move = ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+    const tx = x0 + (px - L) / (W - L - R) * (x1 - x0);
+    let best = times[0], bd = Infinity;
+    for (const t of times) { const d = Math.abs(rDate(t).getTime() - tx); if (d < bd) { bd = d; best = t; } }
+    const x = X(rDate(best).getTime());
+    xh.setAttribute("x1", x); xh.setAttribute("x2", x); xh.setAttribute("visibility", "visible");
+    const vals = series.map(sr => ({sr, v: valueAt(sr.pts, best)})).filter(o => o.v != null);
+    dots.innerHTML = vals.map(o => `<circle cx="${x}" cy="${Y(o.v)}" r="4" fill="${o.sr.color}" stroke="var(--surface)" stroke-width="2"/>`).join("");
+    tip.innerHTML = `<div class="th">${rLabel(best)}${c.monthly ? " (월평균)" : ""}</div>` +
+      vals.map(o => `<div><i style="background:${o.sr.color}"></i>${esc(o.sr.name)}<b>${fmt(o.v)}</b></div>`).join("");
+    tip.style.display = "block";
+    const left = x * r.width / W;
+    tip.style.left = `${Math.min(Math.max(left + 12, 0), r.width - tip.offsetWidth)}px`;
+    if (left + 12 + tip.offsetWidth > r.width) tip.style.left = `${Math.max(left - tip.offsetWidth - 12, 0)}px`;
+    tip.style.top = "8px";
+  };
+  const hide = () => { tip.style.display = "none"; xh.setAttribute("visibility", "hidden"); dots.innerHTML = ""; };
+  svg.querySelector(".hit").addEventListener("pointermove", move);
+  svg.querySelector(".hit").addEventListener("pointerdown", move);
+  svg.addEventListener("pointerleave", hide);
 }
 
 /* ── 주요 이슈 ── */
@@ -754,6 +957,10 @@ function closeCompany() {
   history.replaceState(null, "", "#" + ($("#nav button.on")?.dataset.tab || "brief"));
 }
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeCompany(); });
+let _rsz;
+window.addEventListener("resize", () => { clearTimeout(_rsz); _rsz = setTimeout(() => {
+  const t = $("#nav button.on")?.dataset.tab; if (t === "rate") drawRateCharts(); if (t === "flow") drawFlowChart(); }, 200); });
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (D && $("#t-" + h)) showTab(h); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeCompany(); });
 })();
 </script>
