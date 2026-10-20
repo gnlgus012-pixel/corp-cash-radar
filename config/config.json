@@ -293,7 +293,8 @@
         ],
         "use_correction": true,
         "key_date": "납입일",
-        "merge_filings_days": 45
+        "merge_filings_days": 45,
+        "chain_lookup": "증권신고서(채무증권)"
       },
       "자산 매각": {
         "amount_label": "양도",

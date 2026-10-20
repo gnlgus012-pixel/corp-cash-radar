@@ -702,7 +702,7 @@ def update_details(events: list[dict]) -> None:
     specs = dc["specs"]
     # 규칙(config)이나 추출 코드가 바뀌면 캐시된 원문을 다시 추출
     import hashlib
-    RULES_VER = hashlib.md5((json.dumps({k: {kk: vv for kk, vv in v.items() if kk not in ("key_date", "merge_filings_days")}
+    RULES_VER = hashlib.md5((json.dumps({k: {kk: vv for kk, vv in v.items() if kk not in ("key_date", "merge_filings_days", "chain_lookup")}
                                           for k, v in specs.items()}, sort_keys=True, ensure_ascii=False)
                               + "|parser-3").encode()).hexdigest()[:8]
     path = CACHE_DIR / "details.json"
@@ -772,6 +772,50 @@ def update_details(events: list[dict]) -> None:
     save_json(path, cache)
     if pending:
         warn(f"공시 세부내용 미수집 {pending}건 — 다음 실행에서 이어서 수집합니다.")
+
+    # 목록은 '최종보고서만' 받으므로, 금리만 정정된 최종 신고서([발행조건확정] 등)는 금액·납입일이 없다.
+    # chain_lookup 규칙이 있는 카테고리는 같은 회사의 이전 신고서를 찾아 원문에서 보완한다.
+    chain_n = 0
+    try:
+        for e in events:
+            spec = specs.get(e["category"]) or {}
+            det = cache.get(e["rcept_no"])
+            if not spec.get("chain_lookup") or not det or "err" in det or det.get("amount"):
+                continue
+            if det.get("chain_checked") == RULES_VER:
+                continue
+            pub = parse_ymd(e["date"])
+            j = dart_get("list.json", corp_code=e["corp_code"], bgn_de=ymd(pub - timedelta(days=60)), end_de=ymd(pub),
+                         pblntf_ty="C", last_reprt_at="N", page_no=1, page_count=100)
+            prev = [r for r in (j.get("list") or [])
+                    if r["rcept_no"] != e["rcept_no"] and norm(spec["chain_lookup"]) in norm(r.get("report_nm", ""))
+                    and not r.get("report_nm", "").startswith("[발행조건확정]")]
+            prev.sort(key=lambda r: r["rcept_no"], reverse=True)  # 최근 신고서부터 (수요예측 정정 → 최초)
+            for r in prev[:3]:
+                text, err = dart_document(r["rcept_no"])
+                if text is None:
+                    continue
+                rows, corr = doc_tables(text)
+                pdet = extract_detail(rows, spec, corr)
+                if dc.get("probe") and len(probe.setdefault("이전 신고서: " + e["category"], [])) < 4:
+                    probe["이전 신고서: " + e["category"]].append(
+                        {"rcept_no": r["rcept_no"], "report_nm": r["report_nm"], "corp_name": e["corp_name"],
+                         "extracted": pdet, "rows": _probe_rows(rows, spec), "corr_rows": corr[:40]})
+                if pdet.get("amount"):
+                    det["amount"] = pdet["amount"]
+                    have = dict(det.get("dates", []))
+                    for k, v in pdet.get("dates", []):
+                        have.setdefault(k, v)
+                    det["dates"] = [[k, v] for k, v in have.items()]
+                    det["from_rcept_no"] = r["rcept_no"]
+                    chain_n += 1
+                    break
+            det["chain_checked"] = RULES_VER
+    except (OutOfTime, DartError) as ex:
+        warn(f"이전 신고서 보완 중단: {ex}")
+    save_json(path, cache)
+    if chain_n:
+        log(f"이전 신고서에서 금액·일정 보완 {chain_n}건")
 
     # 같은 회사의 연속 신고서(최초 → 수요예측 정정 → 발행조건확정) 묶기:
     # 빠진 금액·일정은 묶음 안의 다른 신고서 값으로 채우고, 묶음당 최신 1건만 대표(dup=False)로 둔다.
