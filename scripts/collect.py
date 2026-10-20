@@ -530,18 +530,31 @@ def _cell_text(h: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", h))).strip()
 
 
-def doc_rows(text: str) -> list[list[str]]:
-    """원문 XML → 표의 행 목록. 정정공시의 '정정전/정정후' 대조표는 제외(정정 전 값이 잡히지 않도록)."""
-    rows = []
+def doc_tables(text: str) -> tuple[list[list[str]], list[list[str]]]:
+    """원문 XML → (본문 표 행들, 정정 대조표의 [항목, 정정후 값] 행들).
+    정정공시의 '정정전/정정후' 대조표는 본문에서 빼서 정정 전 값이 잡히지 않게 하고, 정정후 값만 따로 모은다."""
+    rows, corr = [], []
     for t in TABLE_RE.findall(text):
-        flat = norm(_cell_text(t))
+        trs = [[_cell_text(m[1]) for m in CELL_RE.findall(tr)] for tr in TR_RE.findall(t)]
+        trs = [r for r in trs if any(r)]
+        flat = norm(" ".join(" ".join(r) for r in trs))
         if "정정전" in flat and "정정후" in flat:
+            after = None
+            for r in trs:
+                nr = [norm(c) for c in r]
+                if "정정후" in nr:
+                    after = nr.index("정정후") - len(nr)  # 오른쪽 기준 위치 (항목 셀 병합 대비)
+                    continue
+                if after is not None and len(r) >= 2 and len(r) >= -after:
+                    label = " ".join(c for c in r[: len(r) + after - 1] if c)
+                    corr.append([label, r[after]])
             continue
-        for tr in TR_RE.findall(t):
-            cells = [_cell_text(m[1]) for m in CELL_RE.findall(tr)]
-            if any(cells):
-                rows.append(cells)
-    return rows
+        rows.extend(trs)
+    return rows, corr
+
+
+def doc_rows(text: str) -> list[list[str]]:
+    return doc_tables(text)[0]
 
 
 def parse_amount(s: str) -> int | None:
@@ -588,8 +601,13 @@ def find_value(rows: list[list[str]], label_re: str, kind: str):
     return None
 
 
-def extract_detail(rows: list[list[str]], spec: dict) -> dict:
+def extract_detail(rows: list[list[str]], spec: dict, corr: list[list[str]] | None = None) -> dict:
+    if corr and spec.get("use_correction"):
+        rows = corr + rows  # 발행조건확정 등: 정정후 값이 확정치
     d = {"amount": None, "amount_label": spec.get("amount_label", "금액"), "dates": [], "texts": []}
+    ff = find_value(rows, r"최초제출일", "date")
+    if ff:
+        d["first_filed"] = ff
     if spec.get("amount_sum"):
         vals = [find_value(rows, rx, "amount") for rx in spec["amount_sum"]]
         vals = [v for v in vals if v]
@@ -667,15 +685,24 @@ def _anomaly(e: dict, det: dict) -> str | None:
     if a is None:
         return "금액 없음"
     old = (date.fromisoformat(pub) - timedelta(days=60)).isoformat()
+    if det.get("old"):
+        return None
     if any(v < old for k, v in det.get("dates", []) if "종료" not in k and "만기" not in k and "기준" not in k):
         return "일정이 공시일보다 60일 이상 과거"
     return None
 
 
+RULES_VER = ""
+
+
 def update_details(events: list[dict]) -> None:
     """이벤트별 금액·일정을 원문에서 추출해 event['detail']에 붙인다. 결과는 캐시(재수집 안 함)."""
+    global RULES_VER
     dc = CFG["details"]
     specs = dc["specs"]
+    # 규칙(config)이나 추출 코드가 바뀌면 캐시된 원문을 다시 추출
+    import hashlib
+    RULES_VER = hashlib.md5((json.dumps(specs, sort_keys=True, ensure_ascii=False) + "|parser-3").encode()).hexdigest()[:8]
     path = CACHE_DIR / "details.json"
     cache = load_json(path, {})
     probe: dict[str, list] = {}
@@ -686,7 +713,7 @@ def update_details(events: list[dict]) -> None:
             if not spec:
                 continue
             rn = e["rcept_no"]
-            if rn in cache:
+            if rn in cache and cache[rn].get("v") == RULES_VER:
                 continue
             if fetched >= dc["max_docs_per_run"]:
                 pending += 1
@@ -694,14 +721,16 @@ def update_details(events: list[dict]) -> None:
             text, err = dart_document(rn)
             fetched += 1
             if text is None:
-                cache[rn] = {"err": err}
+                cache[rn] = {"err": err, "v": RULES_VER}
                 continue
-            rows = doc_rows(text)
-            det = extract_detail(rows, spec)
+            rows, corr = doc_tables(text)
+            det = extract_detail(rows, spec, corr)
+            det["v"] = RULES_VER
             cache[rn] = det
             if dc.get("probe") and len(probe.setdefault(e["category"], [])) < dc.get("probe_per_category", 2):
                 probe[e["category"]].append({"rcept_no": rn, "report_nm": e["report_nm"], "corp_name": e["corp_name"],
-                                             "date": e["date"], "extracted": det, "rows": _probe_rows(rows, spec)})
+                                             "date": e["date"], "extracted": det, "rows": _probe_rows(rows, spec),
+                                             "corr_rows": corr[:40]})
             if fetched % 100 == 0:
                 log(f"공시 원문 {fetched}건 처리…")
                 save_json(path, cache)
@@ -729,9 +758,10 @@ def update_details(events: list[dict]) -> None:
                 if text is None:
                     continue
                 per[key] = per.get(key, 0) + 1
+                prow, pcorr = doc_tables(text)
                 probe.setdefault("이상치: " + key, []).append(
                     {"rcept_no": e["rcept_no"], "report_nm": e["report_nm"], "corp_name": e["corp_name"],
-                     "date": e["date"], "extracted": det, "rows": _probe_rows(doc_rows(text), spec)})
+                     "date": e["date"], "extracted": det, "rows": _probe_rows(prow, spec), "corr_rows": pcorr[:40]})
         except (OutOfTime, DartError):
             pass
         log(f"이상치 원문 재조회 {reprobe}건")
@@ -755,8 +785,13 @@ def update_details(events: list[dict]) -> None:
         why = _anomaly(e, det)
         if why:
             h["이상:" + why] = h.get("이상:" + why, 0) + 1
+        pub = f"{e['date'][:4]}-{e['date'][4:6]}-{e['date'][6:]}"
+        det["old"] = bool(e["correction"] and det.get("first_filed")
+                          and det["first_filed"] < (date.fromisoformat(pub) - timedelta(days=60)).isoformat())
         e["detail"] = det
         h["원문"] += 1
+        if det["old"]:
+            h["과거공시 정정"] = h.get("과거공시 정정", 0) + 1
         h["금액"] += det["amount"] is not None
         for label, _ in det["dates"]:
             h[label] = h.get(label, 0) + 1
@@ -824,7 +859,8 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
     for cc, c in universe.items():
         evs = ev_by_corp.get(cc, [])
         m = metrics[cc]
-        inflow_cats = {e["category"] for e in evs if e["type"] == "유입"}
+        live = [e for e in evs if not (e.get("detail") or {}).get("old")]
+        inflow_cats = {e["category"] for e in live if e["type"] == "유입"}
         ev_pts = min(len(inflow_cats) * sc["points_per_inflow_category"], w["inflow_event"])
         detail = {
             "net_cash": round(r_net.get(cc, 0) * w["net_cash"], 1) if m else 0,
@@ -834,7 +870,7 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
         }
         score = round(sum(detail.values()), 1)
 
-        recent_inflow = [e for e in evs if e["type"] == "유입" and e["date"] >= short_floor]
+        recent_inflow = [e for e in live if e["type"] == "유입" and e["date"] >= short_floor]
         if recent_inflow:
             seg = "short"
         elif m and m["net_cash"] > 0 and (m["cash_ratio"] or 0) >= seg_cfg["long_min_cash_ratio"]:
@@ -846,7 +882,7 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
 
         # 규칙 기반 영업 포인트
         points = []
-        for e in evs[:3]:
+        for e in live[:3]:
             d = f"{e['date'][:4]}.{e['date'][4:6]}.{e['date'][6:]}"
             extra = fmt_event_detail(e)
             points.append(f"{d} {e['category']} 공시{f' ({extra})' if extra else ''} — {e['hint']}")

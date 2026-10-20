@@ -329,9 +329,11 @@ const DART_LINK = (e, label) => e.url
   ? `<a class="dartbtn" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${label || "DART 원문"} ↗</a>` : "";
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const amtTxt = (det) => det && det.amount ? (det.amount >= 1e8 ? eok(det.amount) : `${det.amount.toLocaleString()}원`) : "";
+const OLD_TAG = e => e.detail?.old ? `<span class="tag gray" title="과거에 낸 공시를 정정한 것 — 신규 자금 유입으로 보지 않음">과거공시 정정 (최초 ${esc(e.detail.first_filed)})</span>` : "";
 const evBrief = e => {  // 한 줄 요약: 금액 · 첫 일정
   const d = e.detail; if (!d) return "";
   const p = [];
+  if (d.old) p.push(OLD_TAG(e));
   if (d.amount) p.push(`${esc(d.amount_label)} <b>${amtTxt(d)}</b>`);
   if (d.dates?.[0]) p.push(`${esc(d.dates[0][0])} ${esc(d.dates[0][1].slice(5).replace("-", "."))}`);
   return p.join(" · ");
@@ -432,7 +434,7 @@ function renderBrief() {
 
   const sig = [];
   const seen = new Set();
-  D.events.filter(e => e.type === "유입" && e.date >= d14).forEach(e => {
+  D.events.filter(e => e.type === "유입" && e.date >= d14 && !e.detail?.old).forEach(e => {
     const c = CO_BY_CODE[e.corp_code];
     if (!c || seen.has(c.corp_code)) return;
     seen.add(c.corp_code); sig.push({e, c});
@@ -449,7 +451,7 @@ function renderBrief() {
   const t0 = todayIso(), t30 = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
   const sched = [];
   const seenS = new Set();
-  D.events.forEach(e => (e.detail?.dates || []).forEach(([k, v]) => {
+  D.events.filter(e => !e.detail?.old).forEach(e => (e.detail?.dates || []).forEach(([k, v]) => {
     if (v >= t0 && v <= t30 && !/종료|만기/.test(k)) {
       const key = e.corp_code + e.category + k + v;
       if (!seenS.has(key)) { seenS.add(key); sched.push({e, k, v}); }
@@ -703,7 +705,7 @@ function openCompany(code) {
       <div class="card"><h3>자금 공시 <span class="sub" style="font-weight:400">최근 ${D.meta.lookback_days}일 ${evs.length}건</span></h3>
         <div>${evs.map(e => `<div class="evbox">
           <div class="evhead"><div><div class="t">${typeTag(e.type)} <b>${esc(e.category)}</b> <span class="meta">${dfmt(e.date)} 공시</span></div>
-          <div class="d" style="font-size:12.5px;color:var(--ink-2);margin-top:2px">${esc(e.report_nm)}</div></div>${DART_LINK(e)}</div>
+          <div class="d" style="font-size:12.5px;color:var(--ink-2);margin-top:2px">${esc(e.report_nm)} ${OLD_TAG(e)}</div></div>${DART_LINK(e)}</div>
           ${evFull(e)}
           <div class="meta" style="margin-top:4px">${esc(e.hint)}</div></div>`).join("") || `<div class="empty">공시 없음</div>`}</div></div>
       <div class="card"><h3>관련 뉴스</h3>
