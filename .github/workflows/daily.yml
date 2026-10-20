@@ -1,0 +1,56 @@
+name: 법인 자금 레이더 데이터 갱신
+
+on:
+  schedule:
+    # 평일 한국시간 07:00 (= UTC 전날 22:00, 일~목). GitHub 사정으로 수십 분 늦을 수 있음
+    - cron: "0 22 * * 0-4"
+  workflow_dispatch: {}   # Actions 탭에서 [Run workflow] 버튼으로 수동 실행
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # 공시·재무 캐시는 저장소에 올리지 않고 Actions 캐시에 보관 (증분 수집용)
+      - name: 캐시 복원
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+          restore-keys: radar-cache-
+
+      - run: pip install -r requirements.txt
+
+      - name: 데이터 수집
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
+        run: python scripts/collect.py
+
+      - name: 결과 반영
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/data.json
+          if git diff --cached --quiet; then
+            echo "변경 없음"
+          else
+            git commit -m "data: $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M') 갱신"
+            git push
+          fi

@@ -1,0 +1,74 @@
+{
+  "_설명": "법인 자금 레이더 설정 파일. 값만 바꾸면 수집·점수 로직이 바뀝니다.",
+
+  "lookback_days": 90,
+
+  "dart": {
+    "pblntf_types": ["B", "C", "I"],
+    "_pblntf_types_설명": "B=주요사항보고, C=발행공시(증권신고서 등), I=거래소공시",
+    "pause_sec": 0.15,
+    "exclude_keywords": ["자회사", "철회", "종속회사"],
+    "_exclude_keywords_설명": "보고서명에 이 단어가 있으면 이벤트에서 제외 (자회사 공시 등)"
+  },
+
+  "event_rules": [
+    {"keyword": "유상증자결정",                 "type": "유입", "category": "유상증자",     "hint": "납입 후 집행 전까지 단기 운용 수요"},
+    {"keyword": "전환사채권발행결정",           "type": "유입", "category": "메자닌 발행",  "hint": "조달 자금 집행 전 단기 운용 수요"},
+    {"keyword": "신주인수권부사채권발행결정",   "type": "유입", "category": "메자닌 발행",  "hint": "조달 자금 집행 전 단기 운용 수요"},
+    {"keyword": "교환사채권발행결정",           "type": "유입", "category": "메자닌 발행",  "hint": "조달 자금 집행 전 단기 운용 수요"},
+    {"keyword": "증권신고서(채무증권)",         "type": "유입", "category": "회사채 발행",  "hint": "발행대금 납입 후 차환·집행 전 대기자금"},
+    {"keyword": "유형자산양도결정",             "type": "유입", "category": "자산 매각",    "hint": "매각대금 유입 — 중기 운용 제안 시점"},
+    {"keyword": "타법인주식및출자증권양도결정", "type": "유입", "category": "지분 매각",    "hint": "매각대금 유입 — 중기 운용 제안 시점"},
+    {"keyword": "영업양도결정",                 "type": "유입", "category": "사업 매각",    "hint": "대규모 매각대금 유입 가능"},
+    {"keyword": "자기주식처분결정",             "type": "유입", "category": "자사주 처분",  "hint": "처분대금 유입"},
+    {"keyword": "자기주식취득신탁계약체결결정", "type": "유출", "category": "자사주 취득",  "hint": "신탁 설정 — 자사주 신탁 상품 연계 검토"},
+    {"keyword": "자기주식취득결정",             "type": "유출", "category": "자사주 취득",  "hint": "주주환원 지출 예정 — 유동성 관리 점검"},
+    {"keyword": "유형자산양수결정",             "type": "유출", "category": "자산 취득",    "hint": "대규모 지출 예정 — 집행 전 대기자금 운용 가능"},
+    {"keyword": "타법인주식및출자증권양수결정", "type": "유출", "category": "지분 취득",    "hint": "M&A 대금 지출 예정 — 인수금융·대기자금 수요"},
+    {"keyword": "영업양수결정",                 "type": "유출", "category": "사업 인수",    "hint": "인수대금 지출 예정 — 인수금융 수요"},
+    {"keyword": "신규시설투자",                 "type": "유출", "category": "시설 투자",    "hint": "투자 집행 일정에 맞춘 단계별 운용 제안"},
+    {"keyword": "현금현물배당결정",             "type": "유출", "category": "배당",         "hint": "배당 지급일까지 단기 운용 가능"}
+  ],
+
+  "universe": {
+    "markets": ["Y", "K"],
+    "_markets_설명": "Y=유가증권, K=코스닥, N=코넥스, E=기타. 관심법인(watchlist)은 시장 무관하게 포함"
+  },
+
+  "financials": {
+    "refresh_days": 14,
+    "max_companies_per_run": 300,
+    "_설명": "재무는 캐시해서 14일마다 갱신, 1회 실행당 최대 300개사 (DART 일일 한도 보호)"
+  },
+
+  "scoring": {
+    "weights": {"net_cash": 40, "cash_ratio": 20, "cash_growth": 20, "inflow_event": 20},
+    "points_per_inflow_category": 10,
+    "_설명": "재무 3개 항목은 분석 대상 내 백분위 순위로 환산, 유입 공시는 서로 다른 유형 1개당 10점(최대 20)"
+  },
+
+  "segments": {
+    "short_window_days": 90,
+    "long_min_cash_ratio": 0.15,
+    "_설명": "최근 90일 내 유입 공시 → 단기, 순현금>0 & 현금/자산≥15% → 장기, 순현금>0 → 중기, 그 외 → 모니터링"
+  },
+
+  "news": {
+    "topic_keywords": ["회사채 발행", "유상증자", "자사주 매입", "지분 매각 대금", "단기자금시장", "법인 MMF", "CP 금리", "기업 현금성자산"],
+    "per_topic": 10,
+    "top_companies": 15,
+    "per_company": 5
+  },
+
+  "rates": {
+    "_설명": "한국은행 ECOS 통계코드 — 사용 전 ECOS 통계코드검색에서 코드 확인 필요. 실패한 항목은 화면에서 자동으로 빠집니다.",
+    "items": [
+      {"name": "기준금리",         "stat": "722Y001", "cycle": "M", "item": "0101000"},
+      {"name": "콜금리(1일)",      "stat": "817Y002", "cycle": "D", "item": "010101000"},
+      {"name": "CD(91일)",         "stat": "817Y002", "cycle": "D", "item": "010502000"},
+      {"name": "CP(91일)",         "stat": "817Y002", "cycle": "D", "item": "010503000"},
+      {"name": "국고채(3년)",      "stat": "817Y002", "cycle": "D", "item": "010200000"},
+      {"name": "회사채(3년, AA-)", "stat": "817Y002", "cycle": "D", "item": "010300000"}
+    ]
+  }
+}
