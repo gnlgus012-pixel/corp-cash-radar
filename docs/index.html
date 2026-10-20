@@ -226,7 +226,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <div class="grid g4" id="kpis"></div>
     <div class="rates" id="rates"></div>
     <div class="card" style="margin-bottom:14px">
-      <h3>다가오는 자금 일정 <span class="sub" style="font-weight:400">공시 원문 기준 · 향후 30일 납입·지급·양수도 예정일</span></h3>
+      <h3>다가오는 자금 일정 <span class="sub" style="font-weight:400">공시 원문 기준 · 향후 30일 납입·배당지급·양수도·자사주 매매 시작일 (같은 건은 최신 정정 기준)</span></h3>
       <div class="list sched" id="sched"></div>
     </div>
     <div class="grid g2">
@@ -334,6 +334,7 @@ const evBrief = e => {  // 한 줄 요약: 금액 · 첫 일정
   const d = e.detail; if (!d) return "";
   const p = [];
   if (d.old) p.push(OLD_TAG(e));
+  if (d.superseded_by && !d.old) p.push(`<span class="tag gray" title="같은 건이 이후 공시로 정정됨 — 최신 공시 기준으로 보세요">이후 정정됨</span>`);
   if (d.amount) p.push(`${esc(d.amount_label)} <b>${amtTxt(d)}</b>`);
   if (d.dates?.[0]) p.push(`${esc(d.dates[0][0])} ${esc(d.dates[0][1].slice(5).replace("-", "."))}`);
   return p.join(" · ");
@@ -451,8 +452,9 @@ function renderBrief() {
   const t0 = todayIso(), t30 = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
   const sched = [];
   const seenS = new Set();
-  D.events.filter(e => !e.detail?.old).forEach(e => (e.detail?.dates || []).forEach(([k, v]) => {
-    if (v >= t0 && v <= t30 && !/종료|만기/.test(k)) {
+  const CASH_DATES = /납입|지급|양수|양도|기간 시작|투자 시작/;  // 실제 자금이 오가는 날만
+  D.events.filter(e => !e.detail?.old && !e.detail?.dup).forEach(e => (e.detail?.dates || []).forEach(([k, v]) => {
+    if (v >= t0 && v <= t30 && CASH_DATES.test(k)) {
       const key = e.corp_code + e.category + k + v;
       if (!seenS.has(key)) { seenS.add(key); sched.push({e, k, v}); }
     }

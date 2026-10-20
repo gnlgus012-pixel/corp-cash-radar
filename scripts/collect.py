@@ -850,6 +850,23 @@ def update_details(events: list[dict]) -> None:
     if merged_n:
         log(f"연속 신고서 묶음으로 금액 보완 {merged_n}건")
 
+    # 같은 건의 일정 변경 정정(같은 회사·유형·금액): 최신 공시만 대표, 이전 공시는 superseded 표시
+    latest: dict[tuple, str] = {}
+    for e in events:
+        d = cache.get(e["rcept_no"])
+        if not d or "err" in d or not d.get("amount") or not specs.get(e["category"]):
+            continue
+        k = (e["corp_code"], e["category"], d["amount"])
+        if e["rcept_no"] > latest.get(k, ""):
+            latest[k] = e["rcept_no"]
+    for e in events:
+        d = cache.get(e["rcept_no"])
+        if d and "err" not in d and d.get("amount") and specs.get(e["category"]):
+            sup = latest[(e["corp_code"], e["category"], d["amount"])]
+            d["superseded_by"] = sup if sup != e["rcept_no"] else None
+            if d["superseded_by"]:
+                d["dup"] = True
+
     # 카테고리별 추출 성공률 (검증용)
     hit: dict[str, dict] = {}
     for e in events:
