@@ -49,6 +49,19 @@ MARKET_LABEL = {"Y": "유가", "K": "코스닥", "N": "코넥스", "E": "기타"
 
 WARNINGS: list[str] = []
 
+# 실행 시간 예산(분). 넘으면 그때까지 모은 것만 저장하고 정상 종료 → 다음 실행이 이어서 수집
+_START = time.monotonic()
+TIME_BUDGET_SEC = float(os.environ.get("RADAR_TIME_BUDGET_MIN") or 0) * 60
+
+
+class OutOfTime(Exception):
+    pass
+
+
+def check_time() -> None:
+    if TIME_BUDGET_SEC and time.monotonic() - _START > TIME_BUDGET_SEC:
+        raise OutOfTime()
+
 
 # ───────────────────────── 공통 유틸 ─────────────────────────
 def log(msg: str) -> None:
@@ -122,6 +135,7 @@ class DartError(Exception):
 
 
 def dart_get(endpoint: str, **params) -> dict:
+    check_time()
     params["crtfc_key"] = DART_KEY
     last_err = None
     for attempt in range(3):
@@ -205,49 +219,101 @@ def fetch_disclosures(bgn: date, end: date) -> list[dict]:
     return rows
 
 
-def update_events() -> list[dict]:
-    """최근 lookback_days 일 자금 이벤트 공시. 증분 수집 + 캐시."""
-    store_path = CACHE_DIR / "events.json"
-    store = load_json(store_path, {"last_end": None, "events": {}})
+def _event_from_row(row: dict, rule: dict) -> dict:
+    rn = row["rcept_no"]
+    return {
+        "rcept_no": rn,
+        "date": row.get("rcept_dt", ""),
+        "corp_code": row.get("corp_code", ""),
+        "corp_name": row.get("corp_name", ""),
+        "stock_code": (row.get("stock_code") or "").strip(),
+        "corp_cls": row.get("corp_cls", ""),
+        "report_nm": row.get("report_nm", "").strip(),
+        "type": rule["type"],
+        "category": rule["category"],
+        "hint": rule.get("hint", ""),
+        "correction": "정정" in (row.get("report_nm") or ""),
+        "url": DART_VIEW + rn,
+    }
+
+
+EVENTS_PATH_NAME = "events.json"
+
+
+def load_event_store() -> dict:
+    store = load_json(CACHE_DIR / EVENTS_PATH_NAME, {})
+    store.setdefault("events", {})
+    if "last_end" in store and not store.get("newest"):  # 구버전 캐시 호환
+        store["newest"] = store.pop("last_end")
+        dates = [e["date"] for e in store["events"].values()]
+        store["oldest"] = min(dates) if dates else store["newest"]
+    store.setdefault("newest", None)
+    store.setdefault("oldest", None)
+    return store
+
+
+def update_events() -> tuple[list[dict], int]:
+    """자금 이벤트 공시 수집.
+    - 최근 → 첫 실행은 initial_days 일치만, 이후 실행은 마지막 수집일 3일 전부터 (정정 반영)
+    - 과거 → 실행마다 backfill_days_per_run 일씩 거슬러 올라가 lookback_days 까지 채움
+    - 7일 단위로 진행 상황을 기록하므로 중간에 멈춰도 다음 실행이 이어서 수집
+    반환: (이벤트 목록 최신순, 실제 수집 범위 일수)
+    """
+    dc = CFG["dart"]
+    store = load_event_store()
     today = now_kst().date()
-    floor = today - timedelta(days=CFG["lookback_days"])
-    bgn = floor
-    if store.get("last_end"):
-        bgn = max(floor, parse_ymd(store["last_end"]) - timedelta(days=3))  # 정정 반영용 3일 겹침
-
+    floor = today - timedelta(days=CFG["lookback_days"] - 1)
     added = 0
-    cur = bgn
-    while cur <= today:  # DART 목록 조회는 기간 제한이 있어 30일 단위로 나눔
-        chunk_end = min(cur + timedelta(days=29), today)
-        log(f"공시 목록 조회 {cur} ~ {chunk_end}")
-        for row in fetch_disclosures(cur, chunk_end):
-            rule = classify(row.get("report_nm", ""))
-            if not rule:
-                continue
-            rn = row["rcept_no"]
-            if rn not in store["events"]:
-                added += 1
-            store["events"][rn] = {
-                "rcept_no": rn,
-                "date": row.get("rcept_dt", ""),
-                "corp_code": row.get("corp_code", ""),
-                "corp_name": row.get("corp_name", ""),
-                "stock_code": (row.get("stock_code") or "").strip(),
-                "corp_cls": row.get("corp_cls", ""),
-                "report_nm": row.get("report_nm", "").strip(),
-                "type": rule["type"],
-                "category": rule["category"],
-                "hint": rule.get("hint", ""),
-                "correction": "정정" in (row.get("report_nm") or ""),
-                "url": DART_VIEW + rn,
-            }
-        cur = chunk_end + timedelta(days=1)
+    path = CACHE_DIR / EVENTS_PATH_NAME
 
-    store["events"] = {k: v for k, v in store["events"].items() if v["date"] >= ymd(floor)}
-    store["last_end"] = ymd(today)
-    save_json(store_path, store)
-    log(f"자금 이벤트 {len(store['events']):,}건 (신규 {added:,}건)")
-    return sorted(store["events"].values(), key=lambda e: (e["date"], e["rcept_no"]), reverse=True)
+    def ingest(a: date, b: date) -> None:
+        nonlocal added
+        log(f"공시 목록 조회 {a} ~ {b}")
+        for row in fetch_disclosures(a, b):
+            rule = classify(row.get("report_nm", ""))
+            if rule:
+                added += row["rcept_no"] not in store["events"]
+                store["events"][row["rcept_no"]] = _event_from_row(row, rule)
+
+    try:
+        # ① 최근 구간 (과거 → 오늘 방향)
+        first_run = not store["newest"]
+        if not first_run:
+            cur = max(floor, parse_ymd(store["newest"]) - timedelta(days=3))
+        else:
+            cur = max(floor, today - timedelta(days=dc["initial_days"] - 1))
+            store["oldest"] = ymd(cur)
+        while cur <= today:
+            b = min(cur + timedelta(days=6), today)
+            ingest(cur, b)
+            store["newest"] = ymd(b)
+            save_json(path, store)
+            cur = b + timedelta(days=1)
+
+        # ② 과거 채우기 (오늘 → 과거 방향) — 첫 실행은 가볍게 끝내기 위해 생략
+        oldest = max(parse_ymd(store["oldest"]), floor)
+        target = oldest if first_run else max(floor, oldest - timedelta(days=dc["backfill_days_per_run"]))
+        while oldest > target:
+            a = max(target, oldest - timedelta(days=7))
+            ingest(a, oldest - timedelta(days=1))
+            oldest = a
+            store["oldest"] = ymd(oldest)
+            save_json(path, store)
+    except OutOfTime:
+        warn("시간 제한으로 공시 수집을 중간에 멈췄습니다 — 다음 실행에서 이어서 수집합니다.")
+    finally:
+        if store.get("oldest") and parse_ymd(store["oldest"]) < floor:
+            store["oldest"] = ymd(floor)
+        store["events"] = {k: v for k, v in store["events"].items() if v["date"] >= ymd(floor)}
+        save_json(path, store)
+
+    coverage = (today - parse_ymd(store["oldest"])).days + 1 if store.get("oldest") and store.get("newest") else 0
+    if coverage < CFG["lookback_days"]:
+        warn(f"공시는 최근 {coverage}일치까지 수집됨 — 실행마다 {dc['backfill_days_per_run']}일씩 늘려 "
+             f"{CFG['lookback_days']}일까지 채웁니다.")
+    log(f"자금 이벤트 {len(store['events']):,}건 (신규 {added:,}건, 범위 {coverage}일)")
+    events = sorted(store["events"].values(), key=lambda e: (e["date"], e["rcept_no"]), reverse=True)
+    return events, coverage
 
 
 def load_watchlist(corp_map: dict) -> dict:
@@ -337,10 +403,17 @@ def parse_financials(rows: list[dict]) -> dict:
     return f
 
 
+def report_candidates(today: date) -> list[tuple[int, str]]:
+    """최신 보고서부터. 기간 종료 후 일정 기간이 지나지 않은 보고서는 아직 없으므로 조회 생략."""
+    y = today.year
+    periods = [(y, "11014", date(y, 9, 30), 30), (y, "11012", date(y, 6, 30), 30),
+               (y, "11013", date(y, 3, 31), 30), (y - 1, "11011", date(y - 1, 12, 31), 45),
+               (y - 1, "11014", date(y - 1, 9, 30), 30)]
+    return [(yy, code) for yy, code, end, lag in periods if today >= end + timedelta(days=lag)]
+
+
 def fetch_latest_fin(corp_code: str) -> dict | None:
-    y = now_kst().year
-    candidates = [(y, "11014"), (y, "11012"), (y, "11013"), (y - 1, "11011"), (y - 1, "11014")]
-    for year, code in candidates:
+    for year, code in report_candidates(now_kst().date()):
         for fs in ("CFS", "OFS"):  # 연결 우선, 없으면 별도
             j = dart_get("fnlttSinglAcntAll.json", corp_code=corp_code, bsns_year=str(year),
                          reprt_code=code, fs_div=fs)
@@ -376,6 +449,8 @@ def update_financials(universe: dict) -> dict:
             if fetched % 50 == 0:
                 log(f"재무 수집 {fetched}개사…")
                 save_json(cache_path, cache)
+    except OutOfTime:
+        warn("시간 제한으로 재무 수집을 중간에 멈췄습니다 — 다음 실행에서 이어서 수집합니다.")
     except DartError as e:
         warn(f"재무 수집 중단: {e}")
     save_json(cache_path, cache)
@@ -513,21 +588,50 @@ def naver_news(query: str, display: int) -> list[dict]:
     return out
 
 
-def collect_news(companies: list[dict]) -> list[dict]:
-    if not (NAVER_ID and NAVER_SECRET):
-        warn("네이버 API 키가 없어 뉴스 수집을 건너뜁니다.")
+def google_news(query: str, n: int) -> list[dict]:
+    """구글 뉴스 RSS (키 불필요, 비공식 — 형식이 바뀌면 경고 후 건너뜀)"""
+    try:
+        r = http_get("https://news.google.com/rss/search",
+                     params={"q": query, "hl": "ko", "gl": "KR", "ceid": "KR:ko"})
+        if r.status_code != 200:
+            warn(f"구글 뉴스 '{query}' 조회 실패 (HTTP {r.status_code})")
+            return []
+        root = ET.fromstring(r.content)
+    except Exception as e:
+        warn(f"구글 뉴스 '{query}' 조회 오류: {e}")
         return []
+    out = []
+    for it in root.iter("item"):
+        title = clean_text(it.findtext("title"))
+        src = clean_text(it.findtext("source") or "")
+        if src and title.endswith(" - " + src):
+            title = title[: -len(src) - 3]
+        try:
+            pub = parsedate_to_datetime(it.findtext("pubDate") or "").astimezone(KST).isoformat()
+        except Exception:
+            pub = ""
+        out.append({"title": title, "desc": src, "url": (it.findtext("link") or "").strip(), "date": pub})
+    out.sort(key=lambda x: x["date"], reverse=True)
+    return out[:n]
+
+
+def collect_news(companies: list[dict]) -> tuple[list[dict], str]:
+    use_naver = bool(NAVER_ID and NAVER_SECRET)
+    source = "네이버 뉴스" if use_naver else "구글 뉴스"
+    search = naver_news if use_naver else google_news
     nc = CFG["news"]
     topics = []
     for kw in nc["topic_keywords"]:
-        topics.append({"keyword": kw, "items": naver_news(kw, nc["per_topic"])})
-        time.sleep(0.1)
+        topics.append({"keyword": kw, "items": search(kw, nc["per_topic"])})
+        time.sleep(0.2)
     for c in companies[: nc["top_companies"]]:
-        items = naver_news(c["name"], nc["per_company"] * 2)
+        q = c["name"] if use_naver else '"' + c["name"] + '"'
+        items = search(q, nc["per_company"] * 2)
         c["news"] = [i for i in items if norm(c["name"]) in norm(i["title"] + i["desc"])][: nc["per_company"]]
-        time.sleep(0.1)
-    log(f"뉴스 수집 완료 (주제 {len(topics)}개, 법인 {min(len(companies), nc['top_companies'])}개)")
-    return topics
+        time.sleep(0.2)
+    n_items = sum(len(t["items"]) for t in topics)
+    log(f"뉴스 수집 완료 ({source}, 주제 {len(topics)}개 {n_items}건)")
+    return topics, source
 
 
 # ───────────────────────── 금리 (ECOS) ─────────────────────────
@@ -568,10 +672,15 @@ def main() -> int:
         return 1
     started = now_kst()
     try:
-        events = update_events()
+        events, coverage = update_events()
     except DartError as e:
-        print(f"[치명] {e}", file=sys.stderr)
-        return 1
+        store = load_event_store()
+        if not store["events"]:
+            print(f"[치명] {e}", file=sys.stderr)
+            return 1
+        warn(f"공시 수집 중단, 이전 수집분으로 진행: {e}")
+        events = sorted(store["events"].values(), key=lambda x: (x["date"], x["rcept_no"]), reverse=True)
+        coverage = (now_kst().date() - parse_ymd(store["oldest"])).days + 1 if store.get("oldest") else 0
 
     watch, corp_map = {}, {}
     if WATCHLIST_PATH.exists() and len(WATCHLIST_PATH.read_text(encoding="utf-8-sig").strip().splitlines()) > 1:
@@ -586,14 +695,15 @@ def main() -> int:
 
     fins = update_financials(universe)
     companies = score_companies(universe, fins, events)
-    topics = collect_news(companies)
+    topics, news_source = collect_news(companies)
     rates = fetch_rates()
 
     out = {
         "meta": {
             "generated_at": now_kst().isoformat(timespec="minutes"),
             "elapsed_sec": int((now_kst() - started).total_seconds()),
-            "lookback_days": CFG["lookback_days"],
+            "lookback_days": max(coverage, 1),
+            "news_source": news_source,
             "is_sample": False,
             "warnings": WARNINGS,
         },

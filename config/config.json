@@ -7,6 +7,9 @@
     "pblntf_types": ["B", "C", "I"],
     "_pblntf_types_설명": "B=주요사항보고, C=발행공시(증권신고서 등), I=거래소공시",
     "pause_sec": 0.15,
+    "initial_days": 30,
+    "backfill_days_per_run": 30,
+    "_initial_days_설명": "첫 실행은 최근 30일만 수집하고, 이후 실행마다 30일씩 과거로 채워 lookback_days(90일)까지 확장",
     "exclude_keywords": ["자회사", "철회", "종속회사"],
     "_exclude_keywords_설명": "보고서명에 이 단어가 있으면 이벤트에서 제외 (자회사 공시 등)"
   },
@@ -37,8 +40,8 @@
 
   "financials": {
     "refresh_days": 14,
-    "max_companies_per_run": 300,
-    "_설명": "재무는 캐시해서 14일마다 갱신, 1회 실행당 최대 300개사 (DART 일일 한도 보호)"
+    "max_companies_per_run": 100,
+    "_설명": "재무는 캐시해서 14일마다 갱신, 1회 실행당 최대 100개사 (DART 일일 한도 보호)"
   },
 
   "scoring": {

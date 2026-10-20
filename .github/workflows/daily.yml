@@ -27,13 +27,13 @@ jobs:
 
       # 공시·재무 캐시는 저장소에 올리지 않고 Actions 캐시에 보관 (증분 수집용)
       - name: 캐시 복원
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: cache
           key: radar-cache-${{ github.run_id }}
           restore-keys: radar-cache-
 
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt && mkdir -p cache
 
       - name: 데이터 수집
         env:
@@ -41,9 +41,19 @@ jobs:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
           ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
+          RADAR_TIME_BUDGET_MIN: "40"   # 이 시간이 지나면 모은 데까지 저장하고 정상 종료
         run: python scripts/collect.py
 
+      # 수집이 실패·중단돼도 그때까지 모은 캐시는 저장 → 다음 실행이 이어서 수집
+      - name: 캐시 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+
       - name: 결과 반영
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -52,5 +62,6 @@ jobs:
             echo "변경 없음"
           else
             git commit -m "data: $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M') 갱신"
+            git pull --rebase origin main
             git push
           fi

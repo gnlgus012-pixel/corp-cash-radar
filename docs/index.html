@@ -287,7 +287,7 @@ tbody tr.click:hover{background:var(--surface-2)}
   <!-- 주요 이슈 -->
   <section class="tab" id="t-issue">
     <h2>주요 이슈</h2>
-    <p class="sub">키워드별 최신 뉴스 (네이버 뉴스 검색)</p>
+    <p class="sub" id="issue-sub">키워드별 최신 뉴스</p>
     <div class="chips" id="topicChips"></div>
     <div class="card"><div class="list" id="issueList"></div></div>
   </section>
@@ -381,7 +381,7 @@ function renderBrief() {
   const e7 = D.events.filter(e => e.date >= d7);
   const inN = e7.filter(e => e.type === "유입").length, outN = e7.length - inN;
   const hi = D.companies.filter(c => c.score >= 70).length;
-  $("#brief-sub").textContent = `최근 ${D.meta.lookback_days}일 공시 ${D.events.length.toLocaleString()}건 · 분석 법인 ${D.companies.length.toLocaleString()}개사`;
+  $("#brief-sub").textContent = `최근 ${D.meta.lookback_days}일 자금 공시 ${D.events.length.toLocaleString()}건 · 분석 법인 ${D.companies.length.toLocaleString()}개사`;
   $("#kpis").innerHTML = [
     {c:"in", l:"자금 유입 공시", v:inN, u:"건", n:"최근 7일 · 증자·사채·매각"},
     {c:"out", l:"자금 유출 공시", v:outN, u:"건", n:"최근 7일 · 자사주·투자·인수"},
@@ -579,7 +579,8 @@ function renderProducts() {
 /* ── 주요 이슈 ── */
 function renderIssues() {
   const T = D.topics || [];
-  if (!T.length) { $("#issueList").innerHTML = `<div class="empty">뉴스 데이터가 없습니다. 네이버 API 키를 확인하세요.</div>`; return; }
+  if (D.meta.news_source) $("#issue-sub").textContent = `키워드별 최신 뉴스 (${D.meta.news_source})`;
+  if (!T.length) { $("#issueList").innerHTML = `<div class="empty">뉴스 데이터가 없습니다. 화면 상단 수집 경고를 확인하세요.</div>`; return; }
   const all = {keyword: "전체", items: [...new Map(T.flatMap(t => t.items.map(i => [i.url, {...i, kw: t.keyword}]))).values()]
     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))};
   const list = [all, ...T];
