@@ -972,7 +972,8 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
         evs = ev_by_corp.get(cc, [])
         m = metrics[cc]
         live = [e for e in evs if not (e.get("detail") or {}).get("old") and not (e.get("detail") or {}).get("dup")]
-        inflow_cats = {e["category"] for e in live if e["type"] == "유입"}
+        score_floor = ymd(today - timedelta(days=sc.get("inflow_window_days", 90)))
+        inflow_cats = {e["category"] for e in live if e["type"] == "유입" and e["date"] >= score_floor}
         ev_pts = min(len(inflow_cats) * sc["points_per_inflow_category"], w["inflow_event"])
         detail = {
             "net_cash": round(r_net.get(cc, 0) * w["net_cash"], 1) if m else 0,
@@ -1104,22 +1105,26 @@ def collect_news(companies: list[dict]) -> tuple[list[dict], str]:
 
 # ───────────────────────── 금리 (ECOS) ─────────────────────────
 def fetch_rates() -> list[dict]:
+    """한국은행 ECOS 금리. config rates.items 의 항목별 시계열(일별 history_days, 월별 history_months)."""
     if not ECOS_KEY:
         warn("ECOS API 키가 없어 금리 수집을 건너뜁니다.")
         return []
+    rc = CFG["rates"]
     today = now_kst().date()
     out = []
-    for it in CFG["rates"]["items"]:
+    for it in rc["items"]:
         if it["cycle"] == "M":
-            s, e = (today - timedelta(days=730)).strftime("%Y%m"), today.strftime("%Y%m")
+            s_ = (today - timedelta(days=31 * rc.get("history_months", 60))).strftime("%Y%m")
+            e_ = today.strftime("%Y%m")
         else:
-            s, e = ymd(today - timedelta(days=60)), ymd(today)
-        url = (f"https://ecos.bok.or.kr/api/StatisticSearch/{ECOS_KEY}/json/kr/1/100/"
-               f"{it['stat']}/{it['cycle']}/{s}/{e}/{it['item']}")
+            s_, e_ = ymd(today - timedelta(days=rc.get("history_days", 1100))), ymd(today)
+        url = (f"https://ecos.bok.or.kr/api/StatisticSearch/{ECOS_KEY}/json/kr/1/10000/"
+               f"{it['stat']}/{it['cycle']}/{s_}/{e_}/{it['item']}")
         try:
             j = http_get(url).json()
             rows = (j.get("StatisticSearch") or {}).get("row") or []
-            series = [[r["TIME"], float(r["DATA_VALUE"])] for r in rows if r.get("DATA_VALUE") not in (None, "")]
+            series = [[r["TIME"], round(float(r["DATA_VALUE"]), 3)] for r in rows
+                      if r.get("DATA_VALUE") not in (None, "")]
         except Exception as ex:
             warn(f"금리 '{it['name']}' 조회 오류: {ex}")
             continue
@@ -1127,8 +1132,12 @@ def fetch_rates() -> list[dict]:
             warn(f"금리 '{it['name']}' 데이터 없음 — 통계코드 확인 필요 ({j.get('RESULT')})")
             continue
         series.sort()
-        out.append({"name": it["name"], "date": series[-1][0], "latest": series[-1][1],
-                    "prev": series[-2][1] if len(series) > 1 else None, "series": series[-40:]})
+        # 일별 기준금리처럼 주말까지 채워진 계열은 값이 바뀌는 날 + 마지막 날만 남겨 용량 절감
+        if it.get("step"):
+            series = [p for i, p in enumerate(series) if i == 0 or i == len(series) - 1 or p[1] != series[i - 1][1]]
+        out.append({k: it[k] for k in ("key", "name", "group", "cycle", "region", "brief") if k in it}
+                   | {"date": series[-1][0], "latest": series[-1][1],
+                      "prev": series[-2][1] if len(series) > 1 else None, "series": series})
     log(f"금리 {len(out)}개 항목")
     return out
 

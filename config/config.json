@@ -1,6 +1,6 @@
 {
   "_설명": "법인 자금 레이더 설정 파일. 값만 바꾸면 수집·점수 로직이 바뀝니다.",
-  "lookback_days": 90,
+  "lookback_days": 365,
   "dart": {
     "pblntf_types": [
       "B",
@@ -10,7 +10,7 @@
     "_pblntf_types_설명": "B=주요사항보고, C=발행공시(증권신고서 등), I=거래소공시",
     "pause_sec": 0.15,
     "initial_days": 30,
-    "backfill_days_per_run": 60,
+    "backfill_days_per_run": 300,
     "detail_filter": {
       "I": [
         "I001"
@@ -18,7 +18,7 @@
     },
     "detail_verify_days": 7,
     "_detail_filter_설명": "거래소공시(I)는 양이 많아 수시공시(I001)만 조회 시도. 매 실행마다 최근 7일로 '전체 조회 결과가 필터 조회에 모두 포함되는지' 검증하고, 통과할 때만 적용(실패 시 전체 조회 유지)",
-    "_initial_days_설명": "첫 실행은 최근 30일만 수집하고, 이후 실행마다 60일씩 과거로 채워 lookback_days(90일)까지 확장",
+    "_initial_days_설명": "첫 실행은 최근 30일만, 이후 실행마다 300일씩 과거로 채워 lookback_days(365일)까지 확장",
     "exclude_keywords": [
       "자회사",
       "철회",
@@ -133,8 +133,8 @@
   },
   "financials": {
     "refresh_days": 14,
-    "max_companies_per_run": 400,
-    "_설명": "재무는 캐시해서 14일마다 갱신, 1회 실행당 최대 400개사 (DART 일일 한도 보호)"
+    "max_companies_per_run": 800,
+    "_설명": "재무는 캐시해서 14일마다 갱신, 1회 실행당 최대 800개사 (DART 일일 한도 보호)"
   },
   "scoring": {
     "weights": {
@@ -144,7 +144,8 @@
       "inflow_event": 20
     },
     "points_per_inflow_category": 10,
-    "_설명": "재무 3개 항목은 분석 대상 내 백분위 순위로 환산, 유입 공시는 서로 다른 유형 1개당 10점(최대 20)"
+    "_설명": "재무 3개 항목은 분석 대상 내 백분위 순위로 환산, 유입 공시는 최근 inflow_window_days(90일) 내 서로 다른 유형 1개당 10점(최대 20)",
+    "inflow_window_days": 90
   },
   "segments": {
     "short_window_days": 90,
@@ -167,50 +168,150 @@
     "per_company": 5
   },
   "rates": {
-    "_설명": "한국은행 ECOS 통계코드 — 사용 전 ECOS 통계코드검색에서 코드 확인 필요. 실패한 항목은 화면에서 자동으로 빠집니다.",
+    "_설명": "한국은행 ECOS 통계코드 (2026-10-21 실제 조회로 확인). item에 '/'가 있으면 2단계 항목(예: 902Y023 장기금리/미국). 미국 금리는 ECOS에 월별만 있음",
+    "history_days": 1100,
+    "history_months": 60,
     "items": [
       {
+        "key": "base",
         "name": "기준금리",
+        "group": "kr_short",
+        "region": "KR",
         "stat": "722Y001",
-        "cycle": "M",
-        "item": "0101000"
+        "cycle": "D",
+        "item": "0101000",
+        "step": true,
+        "brief": true
       },
       {
+        "key": "call",
         "name": "콜금리(1일)",
+        "group": "kr_short",
+        "region": "KR",
         "stat": "817Y002",
         "cycle": "D",
-        "item": "010101000"
+        "item": "010101000",
+        "brief": true
       },
       {
+        "key": "cd",
         "name": "CD(91일)",
+        "group": "kr_short",
+        "region": "KR",
         "stat": "817Y002",
         "cycle": "D",
-        "item": "010502000"
+        "item": "010502000",
+        "brief": true
       },
       {
+        "key": "cp",
         "name": "CP(91일)",
+        "group": "kr_short",
+        "region": "KR",
         "stat": "817Y002",
         "cycle": "D",
-        "item": "010503000"
+        "item": "010503000",
+        "brief": true
       },
       {
+        "key": "ktb3",
         "name": "국고채(3년)",
+        "group": "kr_bond",
+        "region": "KR",
         "stat": "817Y002",
         "cycle": "D",
-        "item": "010200000"
+        "item": "010200000",
+        "brief": true
       },
       {
-        "name": "회사채(3년, AA-)",
+        "key": "ktb10",
+        "name": "국고채(10년)",
+        "group": "kr_bond",
+        "region": "KR",
         "stat": "817Y002",
         "cycle": "D",
-        "item": "010300000"
+        "item": "010210000"
+      },
+      {
+        "key": "aa",
+        "name": "회사채(3년, AA-)",
+        "group": "kr_bond",
+        "region": "KR",
+        "stat": "817Y002",
+        "cycle": "D",
+        "item": "010300000",
+        "brief": true
+      },
+      {
+        "key": "bbb",
+        "name": "회사채(3년, BBB-)",
+        "group": "kr_bond",
+        "region": "KR",
+        "stat": "817Y002",
+        "cycle": "D",
+        "item": "010320000"
+      },
+      {
+        "key": "mmf",
+        "name": "MMF(7일)",
+        "group": "kr_short",
+        "region": "KR",
+        "stat": "817Y002",
+        "cycle": "D",
+        "item": "010501000"
+      },
+      {
+        "key": "us_policy",
+        "name": "미국 정책금리",
+        "group": "us",
+        "region": "US",
+        "stat": "902Y006",
+        "cycle": "M",
+        "item": "US",
+        "brief": true
+      },
+      {
+        "key": "us_long",
+        "name": "미국 장기금리(10년)",
+        "group": "us",
+        "region": "US",
+        "stat": "902Y023",
+        "cycle": "M",
+        "item": "IRLT/USA"
+      },
+      {
+        "key": "us_short",
+        "name": "미국 단기금리(3개월)",
+        "group": "us",
+        "region": "US",
+        "stat": "902Y023",
+        "cycle": "M",
+        "item": "IR3TIB/USA"
+      },
+      {
+        "key": "kr_policy_m",
+        "name": "한국 기준금리(월)",
+        "group": "kr_m",
+        "region": "KR",
+        "stat": "902Y006",
+        "cycle": "M",
+        "item": "KR"
+      },
+      {
+        "key": "kr_long_m",
+        "name": "한국 장기금리(10년, 월)",
+        "group": "kr_m",
+        "region": "KR",
+        "stat": "902Y023",
+        "cycle": "M",
+        "item": "IRLT/KOR"
       }
     ]
   },
   "details": {
     "_설명": "공시 원문 표에서 금액·일정을 찾는 규칙. 항목명은 공백을 뺀 글자 기준 정규식. probe=true면 docs/data/probe.json에 원문 표 샘플을 남겨 규칙 검증에 사용",
     "enabled": true,
-    "max_docs_per_run": 1500,
+    "max_docs_per_run": 4000,
     "max_doc_mb": 5,
     "probe": false,
     "probe_per_category": 2,
