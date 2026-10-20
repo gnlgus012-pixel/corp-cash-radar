@@ -304,6 +304,14 @@ def load_event_store() -> dict:
         store["oldest"] = min(dates) if dates else store["newest"]
     store.setdefault("newest", None)
     store.setdefault("oldest", None)
+    # 설정(event_rules)이 바뀌면 캐시된 공시에도 반영: 재분류, 규칙에서 빠진 건 제거
+    for rn in list(store["events"]):
+        ev = store["events"][rn]
+        rule = classify(ev["report_nm"])
+        if not rule:
+            del store["events"][rn]
+            continue
+        ev.update(type=rule["type"], category=rule["category"], hint=rule.get("hint", ""))
     return store
 
 
