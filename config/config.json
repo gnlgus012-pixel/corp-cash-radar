@@ -9,6 +9,9 @@
     "pause_sec": 0.15,
     "initial_days": 30,
     "backfill_days_per_run": 30,
+    "detail_filter": {"I": ["I001"]},
+    "detail_verify_days": 7,
+    "_detail_filter_설명": "거래소공시(I)는 양이 많아 수시공시(I001)만 조회 시도. 매 실행마다 최근 7일로 '전체 조회 결과가 필터 조회에 모두 포함되는지' 검증하고, 통과할 때만 적용(실패 시 전체 조회 유지)",
     "_initial_days_설명": "첫 실행은 최근 30일만 수집하고, 이후 실행마다 30일씩 과거로 채워 lookback_days(90일)까지 확장",
     "exclude_keywords": ["자회사", "철회", "종속회사"],
     "_exclude_keywords_설명": "보고서명에 이 단어가 있으면 이벤트에서 제외 (자회사 공시 등)"

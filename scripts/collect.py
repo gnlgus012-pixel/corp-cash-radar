@@ -48,6 +48,7 @@ REPORT_LABEL = {"11013": "1분기", "11012": "반기", "11014": "3분기", "1101
 MARKET_LABEL = {"Y": "유가", "K": "코스닥", "N": "코넥스", "E": "기타"}
 
 WARNINGS: list[str] = []
+STATS: dict = {"dart_calls": 0, "dart_sec": 0.0, "list_pages": {}, "fin_calls": 0, "detail_filter": {}}
 
 # 실행 시간 예산(분). 넘으면 그때까지 모은 것만 저장하고 정상 종료 → 다음 실행이 이어서 수집
 _START = time.monotonic()
@@ -68,8 +69,13 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
+IN_ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
+
+
 def warn(msg: str) -> None:
     print(f"[경고] {msg}", file=sys.stderr, flush=True)
+    if IN_ACTIONS:
+        print(f"::warning title=수집 경고::{msg}", flush=True)
     WARNINGS.append(msg)
 
 
@@ -140,7 +146,12 @@ def dart_get(endpoint: str, **params) -> dict:
     last_err = None
     for attempt in range(3):
         try:
+            t0 = time.monotonic()
             r = http_get(f"{DART}/{endpoint}", params=params)
+            STATS["dart_calls"] += 1
+            STATS["dart_sec"] += time.monotonic() - t0
+            if endpoint.startswith("fnltt"):
+                STATS["fin_calls"] += 1
             r.raise_for_status()
             j = r.json()
         except Exception as e:  # 네트워크·파싱 오류는 재시도
@@ -204,18 +215,62 @@ def classify(report_nm: str) -> dict | None:
     return None
 
 
+def _fetch_list(bgn: date, end: date, ty: str, detail: str | None = None) -> list[dict]:
+    rows, page = [], 1
+    key = ty + (f"/{detail}" if detail else "")
+    while True:
+        params = dict(bgn_de=ymd(bgn), end_de=ymd(end), pblntf_ty=ty, last_reprt_at="Y",
+                      page_no=page, page_count=100)
+        if detail:
+            params["pblntf_detail_ty"] = detail
+        j = dart_get("list.json", **params)
+        STATS["list_pages"][key] = STATS["list_pages"].get(key, 0) + 1
+        rows.extend(j.get("list") or [])
+        if page >= int(j.get("total_page") or 1):
+            return rows
+        page += 1
+
+
+ACTIVE_DETAIL: dict[str, list[str]] = {}  # 검증을 통과한 상세유형 필터만 여기에 들어감
+
+
+def verify_detail_filters() -> None:
+    """config의 detail_filter(예: 거래소공시 I → I001만)를 최근 며칠 실제 데이터로 검증.
+    전체 조회에서 잡힌 자금 이벤트가 필터 조회에도 전부 있을 때만 적용, 아니면 전체 조회 유지."""
+    filters = CFG["dart"].get("detail_filter") or {}
+    if not filters:
+        return
+    today = now_kst().date()
+    a = today - timedelta(days=CFG["dart"].get("detail_verify_days", 7) - 1)
+    for ty, details in filters.items():
+        full = {r["rcept_no"] for r in _fetch_list(a, today, ty) if classify(r.get("report_nm", ""))}
+        filt = set()
+        n_rows = 0
+        for d in details:
+            rows = _fetch_list(a, today, ty, d)
+            n_rows += len(rows)
+            filt |= {r["rcept_no"] for r in rows if classify(r.get("report_nm", ""))}
+        result = {"검증기간": f"{a}~{today}", "전체조회_이벤트": len(full), "필터조회_이벤트": len(full & filt),
+                  "필터조회_전체행": n_rows}
+        if full and full <= filt:
+            ACTIVE_DETAIL[ty] = details
+            result["적용"] = True
+            log(f"상세유형 필터 {ty}→{details} 검증 통과 (이벤트 {len(full)}건 모두 포함) — 적용")
+        else:
+            result["적용"] = False
+            reason = "검증할 이벤트가 없음" if not full else f"{len(full - filt)}건 누락"
+            warn(f"상세유형 필터 {ty}→{details} 미적용 ({reason}) — 전체 조회 유지")
+        STATS["detail_filter"][ty] = result
+
+
 def fetch_disclosures(bgn: date, end: date) -> list[dict]:
     rows = []
     for ty in CFG["dart"]["pblntf_types"]:
-        page = 1
-        while True:
-            j = dart_get("list.json", bgn_de=ymd(bgn), end_de=ymd(end), pblntf_ty=ty,
-                         last_reprt_at="Y", page_no=page, page_count=100)
-            rows.extend(j.get("list") or [])
-            total_page = int(j.get("total_page") or 1)
-            if page >= total_page:
-                break
-            page += 1
+        if ty in ACTIVE_DETAIL:
+            for d in ACTIVE_DETAIL[ty]:
+                rows.extend(_fetch_list(bgn, end, ty, d))
+        else:
+            rows.extend(_fetch_list(bgn, end, ty))
     return rows
 
 
@@ -672,6 +727,10 @@ def main() -> int:
         return 1
     started = now_kst()
     try:
+        try:
+            verify_detail_filters()
+        except OutOfTime:
+            warn("시간 제한으로 상세유형 필터 검증을 건너뜀")
         events, coverage = update_events()
     except DartError as e:
         store = load_event_store()
@@ -713,7 +772,22 @@ def main() -> int:
         "companies": companies,
         "topics": topics,
     }
+    calls = STATS["dart_calls"]
+    out["meta"]["stats"] = {
+        "dart_calls": calls,
+        "dart_avg_sec": round(STATS["dart_sec"] / calls, 2) if calls else None,
+        "list_pages": STATS["list_pages"],
+        "fin_calls": STATS["fin_calls"],
+        "fin_ok": sum(1 for c in companies if c["fin"]),
+        "detail_filter": STATS["detail_filter"],
+    }
     save_json(OUT_PATH, out)
+    summary = (f"공시 {coverage}일·{len(events):,}건 / 법인 {len(companies):,}개(재무 {out['meta']['stats']['fin_ok']}) / "
+               f"DART 호출 {calls:,}회·평균 {out['meta']['stats']['dart_avg_sec']}초 / 목록 페이지 {STATS['list_pages']} / "
+               f"소요 {out['meta']['elapsed_sec']}초 / 경고 {len(WARNINGS)}건")
+    log("요약: " + summary)
+    if IN_ACTIONS:
+        print(f"::notice title=수집 요약::{summary}", flush=True)
     log(f"저장 완료: {OUT_PATH.relative_to(ROOT)} (법인 {len(companies):,} / 이벤트 {len(events):,})")
     return 0
 

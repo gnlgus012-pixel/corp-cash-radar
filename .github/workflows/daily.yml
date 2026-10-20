@@ -5,6 +5,12 @@ on:
     # 평일 한국시간 07:00 (= UTC 전날 22:00, 일~목). GitHub 사정으로 수십 분 늦을 수 있음
     - cron: "0 22 * * 0-4"
   workflow_dispatch: {}   # Actions 탭에서 [Run workflow] 버튼으로 수동 실행
+  push:                   # 수집 코드·설정을 고치면 바로 한 번 실행 (데이터 갱신 커밋으로는 실행 안 됨)
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "config/**"
+      - ".github/workflows/**"
 
 permissions:
   contents: write
@@ -15,7 +21,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
