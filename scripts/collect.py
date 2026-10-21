@@ -492,6 +492,9 @@ def parse_financials(rows: list[dict]) -> dict:
             if f["revenue"] is None and (aid == "ifrs-full_Revenue" or nm in ("매출액", "수익(매출액)", "영업수익")):
                 f["revenue"] = to_int(r.get("thstrm_add_amount")) or cur
     f["borrowings"] = borrow_total if borrow_found else 0
+    if f["cash"] is None and not alt:  # 진단용: 현금 계정 후보 이름 기록
+        f["cash_candidates"] = sorted({r.get("account_nm", "") for r in rows
+                                       if r.get("sj_div") == "BS" and "현금" in r.get("account_nm", "")})[:8]
     if f["cash"] is None and alt:
         f["cash"], f["cash_prev"] = alt
         f["cash_label"] = "현금및예치금"
@@ -502,7 +505,7 @@ def parse_financials(rows: list[dict]) -> dict:
     return f
 
 
-FIN_VER = "fin2"
+FIN_VER = "fin3"
 FIN_INDUSTRY = ("641", "649", "651", "652", "653", "661", "662")  # 은행·여신·보험·증권 등 (지주회사 64992는 계정으로 판별)
 
 
