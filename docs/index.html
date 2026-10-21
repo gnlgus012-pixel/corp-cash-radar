@@ -361,8 +361,8 @@ const relTime = iso => {
   if (m < 1440) return `${Math.round(m/60)}시간 전`;
   return `${Math.round(m/1440)}일 전`;
 };
-const DART_LINK = (e, label) => e.url
-  ? `<a class="dartbtn" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${label || "DART 원문"} ↗</a>` : "";
+const DART_LINK = (e, label) => e.rcept_no
+  ? `<a class="dartbtn" href="https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${esc(e.rcept_no)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${label || "DART 원문"} ↗</a>` : "";
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const amtTxt = (det) => det && det.amount ? (det.amount >= 1e8 ? eok(det.amount) : `${det.amount.toLocaleString()}원`) : "";
 const OLD_TAG = e => e.detail?.old ? `<span class="tag gray" title="과거에 낸 공시를 정정한 것 — 신규 자금 유입으로 보지 않음">과거공시 정정 (최초 ${esc(e.detail.first_filed)})</span>` : "";
@@ -437,7 +437,7 @@ function init(data) {
   renderBrief(); initFlow(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
   $$("#nav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
   const h = location.hash.slice(1);
-  if (h.startsWith("c=")) openCompany(h.slice(2)); else if (h) showTab(h);
+  if (h.startsWith("c=")) openCompany(h.slice(2)); else if (/^[a-z]+$/.test(h)) showTab(h);
 }
 
 function showTab(t) {
@@ -943,7 +943,7 @@ function openCompany(code) {
           <div class="evhead"><div><div class="t">${typeTag(e.type)} <b>${esc(e.category)}</b> <span class="meta">${dfmt(e.date)} 공시</span></div>
           <div class="d" style="font-size:12.5px;color:var(--ink-2);margin-top:2px">${esc(e.report_nm)} ${OLD_TAG(e)}${e.detail?.superseded_by && !e.detail?.old ? '<span class="tag gray">이후 정정됨 — 최신 공시 기준</span>' : ""}</div></div>${DART_LINK(e)}</div>
           ${evFull(e)}
-          <div class="meta" style="margin-top:4px">${esc(e.hint)}</div></div>`).join("") || `<div class="empty">공시 없음</div>`}</div></div>
+          <div class="meta" style="margin-top:4px">${esc(e.hint ?? D.meta.hints?.[e.category] ?? "")}</div></div>`).join("") || `<div class="empty">공시 없음</div>`}</div></div>
       <div class="card"><h3>관련 뉴스</h3>
         <div class="list">${(c.news || []).map(n => newsItem(n)).join("") || `<div class="sub" style="margin:0">수집된 기사가 없습니다 (점수 상위 법인만 수집).</div>`}</div></div>
     </div>`;
@@ -960,7 +960,12 @@ $("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeC
 let _rsz;
 window.addEventListener("resize", () => { clearTimeout(_rsz); _rsz = setTimeout(() => {
   const t = $("#nav button.on")?.dataset.tab; if (t === "rate") drawRateCharts(); if (t === "flow") drawFlowChart(); }, 200); });
-window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (D && $("#t-" + h)) showTab(h); });
+window.addEventListener("hashchange", () => {
+  const h = location.hash.slice(1);
+  if (!D) return;
+  if (h.startsWith("c=")) openCompany(h.slice(2));
+  else if (/^[a-z]+$/.test(h) && $("#t-" + h)) { closeCompany(); showTab(h); }
+});
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeCompany(); });
 })();
 </script>

@@ -1172,6 +1172,15 @@ def fetch_rates() -> list[dict]:
     return out
 
 
+def slim_event(e: dict) -> dict:
+    """화면용 출력에서 반복·기본값 필드 제거 (링크는 접수번호로, 안내문구는 meta.hints 로 화면에서 복원)"""
+    o = {k: v for k, v in e.items() if k not in ("url", "hint") and not (k == "correction" and not v)}
+    if "detail" in o:
+        o["detail"] = {k: v for k, v in o["detail"].items()
+                       if k not in ("v", "chain_checked") and v not in (None, False, [], "")}
+    return o
+
+
 # ───────────────────────── 메인 ─────────────────────────
 def main() -> int:
     if not DART_KEY:
@@ -1217,12 +1226,13 @@ def main() -> int:
             "elapsed_sec": int((now_kst() - started).total_seconds()),
             "lookback_days": max(coverage, 1),
             "news_source": news_source,
+            "hints": {r["category"]: r.get("hint", "") for r in reversed(CFG["event_rules"])},
             "is_sample": False,
             "warnings": WARNINGS,
         },
         "segments": PRODUCTS["segments"],
         "rates": rates,
-        "events": events,
+        "events": [slim_event(e) for e in events],
         "companies": companies,
         "topics": topics,
     }
