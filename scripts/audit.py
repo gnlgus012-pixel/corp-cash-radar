@@ -131,7 +131,7 @@ def main() -> int:
         "missing_by_category": Counter(m["category"] for m in missing),
         "dashboard_only": [{"rcept_no": e["rcept_no"], "date": e["date"], "corp": e["corp_name"],
                             "report_nm": e["report_nm"]} for e in extra][:200],
-        "excluded": Counter(base_name(x["report_nm"]) for x in excluded).most_common(50),
+        "excluded": Counter(re.sub(r"\s+", " ", x["report_nm"]) for x in excluded).most_common(60),
         "unmatched_candidates": [{"name": k, "count": v, "example": unmatched_ex[k]}
                                  for k, v in unmatched.most_common(150)],
         "matched_names_by_category": {k: v.most_common() for k, v in sorted(by_cat.items())},
