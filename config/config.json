@@ -335,6 +335,9 @@
         "must": [
           "유상증자",
           "유증"
+        ],
+        "exclude": [
+          "달러"
         ]
       },
       {
@@ -356,6 +359,9 @@
         ],
         "must": [
           "매각"
+        ],
+        "exclude": [
+          "달러"
         ]
       },
       {
@@ -375,16 +381,16 @@
         ]
       },
       {
-        "name": "MMF·대기자금",
+        "name": "MMF·법인자금",
         "queries": [
           "MMF 설정액",
+          "MMF 자금 유입",
           "법인 MMF",
-          "대기자금"
+          "머니마켓펀드"
         ],
         "must": [
           "MMF",
-          "머니마켓",
-          "대기자금"
+          "머니마켓"
         ],
         "exclude": [
           "코인"
@@ -418,6 +424,23 @@
           "스테이블"
         ]
       }
+    ],
+    "blocked_sources": [
+      "Vietnam.vn",
+      "Investing.com",
+      "Traders Union",
+      "OneBullEx",
+      "Calgary Roughnecks",
+      "x.com",
+      "twitter.com"
+    ],
+    "dup_threshold": 0.55,
+    "_dup_설명": "제목 글자쌍 겹침 비율(짧은 제목 기준)이 이 값보다 크면 같은 기사로 보고 최신 1건만",
+    "company_skip_regex": [
+      "주가.{0,15}(상승|하락|강세|약세)\\s*(중|마감|출발)?\\s*$",
+      "장중\\s*[\\d,]+원",
+      "주가\\s*[\\d,]+원\\s*(상승|하락)",
+      "투자분석 \\d{4}\\."
     ]
   },
   "rates": {

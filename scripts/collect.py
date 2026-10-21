@@ -1126,19 +1126,32 @@ def clean_news(items: list[dict], must=(), exclude=(), name: str | None = None) 
     nc = CFG["news"]
     cutoff = (now_kst() - timedelta(days=nc.get("max_age_days", 7))).isoformat()
     spam = nc.get("spam_words", [])
-    seen, out = set(), []
+    blocked = nc.get("blocked_sources", [])
+
+    def grams(t: str) -> set:
+        t = norm(re.sub(r"[^\w가-힣]", "", t))
+        return {t[k:k + 2] for k in range(len(t) - 1)}
+
+    kept: list[set] = []
+    out = []
     for i in sorted(items, key=lambda x: x["date"], reverse=True):
         t = i["title"]
-        key = norm(t)[:40]
-        if not i["date"] or i["date"] < cutoff or key in seen:
+        if not i["date"] or i["date"] < cutoff:
+            continue
+        if any(b.lower() in (i["desc"] + " " + i["url"]).lower() for b in blocked) or re.search(r"\bon X$", t):
             continue
         if any(w in t or w in i["desc"] for w in spam) or any(w in t for w in exclude):
+            continue
+        g = grams(t)  # 거의 같은 제목(여러 매체 전재)은 하나만
+        if any(len(g & k) / max(1, min(len(g), len(k))) > nc.get("dup_threshold", 0.55) for k in kept):
             continue
         if must and not any(m.lower() in t.lower() for m in must):
             continue
         if name and not _name_in(name, t):
             continue
-        seen.add(key)
+        if name and any(re.search(rx, t) for rx in nc.get("company_skip_regex", [])):
+            continue  # 시세 자동 생성 기사 등
+        kept.append(g)
         out.append(i)
     return out
 
