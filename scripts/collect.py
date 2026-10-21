@@ -668,20 +668,28 @@ CONTACT_RX = re.compile(r"작\s*성\s*책\s*임\s*자|공\s*시\s*책\s*임\s*�
 
 
 def parse_contact(rows: list[list[str]]) -> dict | None:
-    """공시 표지의 작성책임자(직책·성명·전화) — 예: '(직 책) 재무팀장 (성 명) 홍길동' / '(전 화) 02-123-4567'"""
+    """공시 표지의 작성책임자(직책·성명·전화). 확인된 형식:
+    '(직 책) 전략기획실장 (성 명) 강동혁' / '(직 책) 부사장 | (성 명) 이 상 호' / '이 사 | 황 욱'(표시 없음), 전화는 다음 줄"""
+    def squash(x):
+        x = re.sub(r"\s+", " ", (x or "").strip(" :()|"))
+        return x.replace(" ", "") if re.fullmatch(r"(?:[가-힣] )+[가-힣]", x) else x
     for i, cells in enumerate(rows):
         if not CONTACT_RX.search(" ".join(cells)):
             continue
-        t = re.sub(r"\s+", " ", " ".join(" ".join(r) for r in rows[i:i + 2]))
-        m_title = re.search(r"직\s*책\s*\)?\s*:?\s*([^()]{1,30}?)\s*\(?\s*성\s*명", t)
-        m_name = re.search(r"성\s*명\s*\)?\s*:?\s*([가-힣A-Za-z][가-힣A-Za-z ]{0,20}?)\s*(?=\(|전\s*화|$)", t)
-        m_tel = re.search(r"전\s*화\s*(?:번\s*호)?\s*\)?\s*:?\s*\(?(0\d{1,2})\)?\s*[-.]?\s*(\d{3,4})\s*[-.]?\s*(\d{4})(?!\d)", t)
-        name = m_name.group(1).strip() if m_name else None
-        if name and re.fullmatch(r"(?:[가-힣] )+[가-힣]", name):  # '홍 길 동' → '홍길동'
-            name = name.replace(" ", "")
+        rest = [c for c in cells if c.strip() and not CONTACT_RX.search(c)]
+        line = re.sub(r"\s+", " ", " ".join(rest))
+        m_t = re.search(r"직\s*책\s*\)?\s*:?\s*(.*?)\s*(?:\(\s*성\s*명|성\s*명\s*\)|$)", line)
+        m_n = re.search(r"성\s*명\s*\)?\s*:?\s*([^()]*?)\s*(?:\(|전\s*화|$)", line)
+        title, name = (squash(m_t.group(1)) if m_t else None), (squash(m_n.group(1)) if m_n else None)
+        if not (m_t or m_n) and len(rest) >= 2 and not re.search(r"\d{3}", rest[0] + rest[1]):
+            title, name = squash(rest[0]), squash(rest[1])
+        near = re.sub(r"\s+", " ", " ".join(" ".join(r) for r in rows[i:i + 3]))
+        m_tel = re.search(r"전\s*화\s*(?:번\s*호)?\s*\)?\s*:?\s*\(?(0\d{1,2})\)?\s*[-.]?\s*(\d{3,4})\s*[-.]?\s*(\d{4})(?!\d)", near)
         tel = "-".join(m_tel.groups()) if m_tel else None
+        if name and (len(name) > 20 or re.search(r"\d", name)):
+            name = None
         if name or tel:
-            return {"title": m_title.group(1).strip() if m_title else None, "name": name, "phone": tel}
+            return {"title": title or None, "name": name or None, "phone": tel}
     return None
 
 
@@ -752,6 +760,7 @@ def _anomaly(e: dict, det: dict) -> str | None:
 
 
 RULES_VER = ""
+CONTACT_VER = "ct2"
 
 
 def update_details(events: list[dict]) -> dict:
@@ -978,6 +987,32 @@ def update_details(events: list[dict]) -> dict:
     if dc.get("probe"):
         save_json(OUT_PATH.parent / "probe.json", probe)
     log(f"공시 원문 신규 {fetched}건 처리")
+    # 작성책임자가 없는 법인 → 그 법인의 최신 주요사항보고서·증권신고서(표지 있음) 원문에서 보충
+    has = {e["corp_code"] for e in events if (cache.get(e["rcept_no"]) or {}).get("contact")}
+    cover_rx = re.compile(r"주요사항보고서|증권신고서")
+    tried = 0
+    try:
+        for e in sorted(events, key=lambda x: x["rcept_no"], reverse=True):
+            if e["corp_code"] in has or not cover_rx.search(e["report_nm"]):
+                continue
+            d = cache.get(e["rcept_no"])
+            if d is not None and d.get("ct_v") == CONTACT_VER:
+                continue
+            if tried >= dc.get("max_contact_docs_per_run", 800):
+                break
+            text, err = dart_document(e["rcept_no"])
+            tried += 1
+            ct = parse_contact(doc_rows(text)) if text else None
+            d = cache.setdefault(e["rcept_no"], {})
+            d["ct_v"] = CONTACT_VER
+            if ct:
+                d["contact"] = ct
+                has.add(e["corp_code"])
+    except (OutOfTime, DartError) as ex:
+        warn(f"작성책임자 보충 중단: {ex}")
+    save_json(path, cache)
+    if tried:
+        log(f"작성책임자 보충 원문 {tried}건 조회")
     # 법인별 최신 공시의 작성책임자
     contacts: dict[str, dict] = {}
     for e in sorted(events, key=lambda x: x["rcept_no"], reverse=True):
@@ -985,6 +1020,7 @@ def update_details(events: list[dict]) -> dict:
         if ct and e["corp_code"] not in contacts:
             contacts[e["corp_code"]] = ct | {"rcept_no": e["rcept_no"], "date": e["date"], "report_nm": e["report_nm"]}
     log(f"작성책임자 확보 {len(contacts):,}개사")
+    STATS["contacts"] = len(contacts)
     return contacts
 
 
@@ -1394,6 +1430,7 @@ def main() -> int:
         "doc_calls": STATS.get("doc_calls", 0),
         "detail_hits": STATS.get("detail_hits", {}),
         "detail_errors": STATS.get("detail_errors", {}),
+        "contacts": STATS.get("contacts", 0),
     }
     save_json(OUT_PATH, out)
     summary = (f"공시 {coverage}일·{len(events):,}건 / 법인 {len(companies):,}개(재무 {out['meta']['stats']['fin_ok']}) / "

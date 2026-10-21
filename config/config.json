@@ -590,7 +590,7 @@
     "enabled": true,
     "max_docs_per_run": 5000,
     "max_doc_mb": 5,
-    "probe": true,
+    "probe": false,
     "probe_per_category": 3,
     "specs": {
       "유상증자": {
@@ -1135,7 +1135,8 @@
       "시설 투자",
       "배당"
     ],
-    "_차입_설명": "단기차입금증가결정 원문에는 차입일 항목이 없어 일정 미표시 (금액만)"
+    "_차입_설명": "단기차입금증가결정 원문에는 차입일 항목이 없어 일정 미표시 (금액만)",
+    "max_contact_docs_per_run": 800
   },
   "_event_rules_추가": "2026-10-21 누락 점검(audit.json) 결과로 거래소공시 명칭(취득·처분결정), 차입·대여·영구채·사채 조기취득 등 추가",
   "company_info": {
