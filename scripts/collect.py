@@ -649,11 +649,40 @@ def extract_detail(rows: list[list[str]], spec: dict, corr: list[list[str]] | No
         v = find_value(rows, rx, "date")
         if v:
             d["dates"].append([label, v])
-    for label, rx, kind in spec.get("texts", []):
+    for t in spec.get("texts", []):
+        label, rx, kind = t[:3]
+        maxlen = t[3] if len(t) > 3 else 40
         v = find_value(rows, rx, kind)
         if v is not None:
-            d["texts"].append([label, v if kind != "text" else str(v)[:40]])
+            d["texts"].append([label, v if kind != "text" else str(v)[:maxlen]])
+    uses = [[label, find_value(rows, rx, "amount")] for label, rx in spec.get("uses", [])]
+    if any(v for _, v in uses):
+        d["uses"] = [[k, v] for k, v in uses if v]
+    ct = parse_contact(rows)
+    if ct:
+        d["contact"] = ct
     return d
+
+
+CONTACT_RX = re.compile(r"작\s*성\s*책\s*임\s*자|공\s*시\s*책\s*임\s*자|공\s*시\s*담\s*당\s*자")
+
+
+def parse_contact(rows: list[list[str]]) -> dict | None:
+    """공시 표지의 작성책임자(직책·성명·전화) — 예: '(직 책) 재무팀장 (성 명) 홍길동' / '(전 화) 02-123-4567'"""
+    for i, cells in enumerate(rows):
+        if not CONTACT_RX.search(" ".join(cells)):
+            continue
+        t = re.sub(r"\s+", " ", " ".join(" ".join(r) for r in rows[i:i + 2]))
+        m_title = re.search(r"직\s*책\s*\)?\s*:?\s*([^()]{1,30}?)\s*\(?\s*성\s*명", t)
+        m_name = re.search(r"성\s*명\s*\)?\s*:?\s*([가-힣A-Za-z][가-힣A-Za-z ]{0,20}?)\s*(?=\(|전\s*화|$)", t)
+        m_tel = re.search(r"전\s*화\s*(?:번\s*호)?\s*\)?\s*:?\s*\(?(0\d{1,2})\)?\s*[-.]?\s*(\d{3,4})\s*[-.]?\s*(\d{4})(?!\d)", t)
+        name = m_name.group(1).strip() if m_name else None
+        if name and re.fullmatch(r"(?:[가-힣] )+[가-힣]", name):  # '홍 길 동' → '홍길동'
+            name = name.replace(" ", "")
+        tel = "-".join(m_tel.groups()) if m_tel else None
+        if name or tel:
+            return {"title": m_title.group(1).strip() if m_title else None, "name": name, "phone": tel}
+    return None
 
 
 def dart_document(rcept_no: str) -> tuple[str | None, str]:
@@ -725,7 +754,7 @@ def _anomaly(e: dict, det: dict) -> str | None:
 RULES_VER = ""
 
 
-def update_details(events: list[dict]) -> None:
+def update_details(events: list[dict]) -> dict:
     """이벤트별 금액·일정을 원문에서 추출해 event['detail']에 붙인다. 결과는 캐시(재수집 안 함)."""
     global RULES_VER
     dc = CFG["details"]
@@ -767,6 +796,12 @@ def update_details(events: list[dict]) -> None:
             det = extract_detail(rows, spec, corr)
             det["v"] = VER[e["category"]]
             cache[rn] = det
+            if dc.get("probe"):
+                ck = "작성책임자: " + ("찾음" if det.get("contact") else "못찾음") + " / " + e["report_nm"][:12]
+                if len(probe.setdefault(ck, [])) < 3:
+                    hit_rows = [r for r in rows if CONTACT_RX.search(" ".join(r))]
+                    probe[ck].append({"rcept_no": rn, "corp_name": e["corp_name"], "contact": det.get("contact"),
+                                      "rows": [r[:6] for r in (hit_rows or rows[:15])][:8]})
             if dc.get("probe") and len(probe.setdefault(e["category"], [])) < dc.get("probe_per_category", 2):
                 probe[e["category"]].append({"rcept_no": rn, "report_nm": e["report_nm"], "corp_name": e["corp_name"],
                                              "date": e["date"], "extracted": det, "rows": _probe_rows(rows, spec),
@@ -943,6 +978,14 @@ def update_details(events: list[dict]) -> None:
     if dc.get("probe"):
         save_json(OUT_PATH.parent / "probe.json", probe)
     log(f"공시 원문 신규 {fetched}건 처리")
+    # 법인별 최신 공시의 작성책임자
+    contacts: dict[str, dict] = {}
+    for e in sorted(events, key=lambda x: x["rcept_no"], reverse=True):
+        ct = (cache.get(e["rcept_no"]) or {}).get("contact")
+        if ct and e["corp_code"] not in contacts:
+            contacts[e["corp_code"]] = ct | {"rcept_no": e["rcept_no"], "date": e["date"], "report_nm": e["report_nm"]}
+    log(f"작성책임자 확보 {len(contacts):,}개사")
+    return contacts
 
 
 def fmt_event_detail(e: dict) -> str:
@@ -954,7 +997,52 @@ def fmt_event_detail(e: dict) -> str:
         parts.append(f"{det['amount_label']} {eok(det['amount'])}" if det["amount"] >= 1e8
                      else f"{det['amount_label']} {det['amount']:,}원")
     parts += [f"{k} {v}" for k, v in det.get("dates", [])[:2]]
+    if det.get("uses"):
+        top = max(det["uses"], key=lambda x: x[1])
+        parts.append(f"주 용도 {top[0]}")
+    purpose = next((v for k, v in det.get("texts", []) if k in ("목적", "사유")), None)
+    if purpose:
+        parts.append(f"목적 {purpose[:30]}")
     return ", ".join(parts)
+
+
+def update_company_info(universe: dict) -> dict:
+    """DART 기업개황(company.json): 대표이사·주소·전화·홈페이지 등. 30일 캐시, 1회 최대 N개사."""
+    cfg = CFG.get("company_info", {})
+    path = CACHE_DIR / "company.json"
+    cache = load_json(path, {})
+    ttl, cap = cfg.get("refresh_days", 30), cfg.get("max_per_run", 1000)
+    now = now_kst()
+    fetched = pending = 0
+    try:
+        for cc in sorted(universe, key=lambda k: not universe[k]["watch"]):
+            hit = cache.get(cc)
+            if hit and (now - datetime.fromisoformat(hit["fetched_at"])).days < ttl:
+                continue
+            if fetched >= cap:
+                pending += 1
+                continue
+            j = dart_get("company.json", corp_code=cc)
+            fetched += 1
+            info = None
+            if j.get("status") == "000":
+                info = {k: (j.get(src) or "").strip() for k, src in
+                        [("ceo", "ceo_nm"), ("addr", "adres"), ("phone", "phn_no"), ("fax", "fax_no"),
+                         ("url", "hm_url"), ("ir_url", "ir_url"), ("est_dt", "est_dt"), ("acc_mt", "acc_mt"),
+                         ("bizr_no", "bizr_no"), ("induty_code", "induty_code")]}
+                info = {k: v for k, v in info.items() if v}
+            cache[cc] = {"fetched_at": now.isoformat(), "info": info}
+            if fetched % 200 == 0:
+                save_json(path, cache)
+    except OutOfTime:
+        warn("시간 제한으로 기업개황 수집을 중간에 멈췄습니다 — 다음 실행에서 이어서 수집합니다.")
+    except DartError as e:
+        warn(f"기업개황 수집 중단: {e}")
+    save_json(path, cache)
+    if pending:
+        warn(f"기업개황 미수집 {pending}개사 — 다음 실행에서 이어서 수집합니다.")
+    log(f"기업개황 신규 {fetched}개사")
+    return {cc: (cache.get(cc) or {}).get("info") for cc in universe}
 
 
 # ───────────────────────── 점수·분류 ─────────────────────────
@@ -1231,7 +1319,7 @@ def slim_event(e: dict) -> dict:
     o = {k: v for k, v in e.items() if k not in ("url", "hint") and not (k == "correction" and not v)}
     if "detail" in o:
         o["detail"] = {k: v for k, v in o["detail"].items()
-                       if k not in ("v", "chain_checked") and v not in (None, False, [], "")}
+                       if k not in ("v", "chain_checked", "contact") and v not in (None, False, [], "")}
     return o
 
 
@@ -1268,9 +1356,14 @@ def main() -> int:
     log(f"분석 대상 {len(universe):,}개사 (관심법인 {len(watch)}개)")
 
     fins = update_financials(universe)
-    if CFG.get("details", {}).get("enabled"):
-        update_details(events)
+    contacts = update_details(events) if CFG.get("details", {}).get("enabled") else {}
+    infos = update_company_info(universe)
     companies = score_companies(universe, fins, events)
+    for c in companies:
+        if infos.get(c["corp_code"]):
+            c["info"] = infos[c["corp_code"]]
+        if contacts.get(c["corp_code"]):
+            c["contact"] = contacts[c["corp_code"]]
     topics, news_source = collect_news(companies)
     rates = fetch_rates()
 

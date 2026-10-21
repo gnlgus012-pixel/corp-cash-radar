@@ -204,6 +204,11 @@ tbody tr.click:hover{background:var(--surface-2)}
 .dartbtn:hover{text-decoration:none;border-color:var(--accent)}
 .evkv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px;margin-top:6px}
 .evkv span{color:var(--ink-2)} .evkv b{font-variant-numeric:tabular-nums;font-weight:600}
+.evkv b.wrapv{font-weight:500;line-height:1.45}
+.info{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px}
+.info span{color:var(--ink-2);white-space:nowrap}
+.info a{word-break:break-all}
+.copy{border:1px solid var(--line);background:var(--surface);border-radius:6px;font-size:11px;padding:1px 6px;margin-left:6px;cursor:pointer;color:var(--ink-2)}
 .evbox{padding:10px 0;border-bottom:1px solid var(--line)} .evbox:last-child{border-bottom:0}
 .evhead{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
 .sched .dt{font-weight:700;font-variant-numeric:tabular-nums;min-width:46px}
@@ -384,7 +389,8 @@ const evFull = e => {  // 상세: 금액 + 모든 일정 + 기타
   if (d.amount) items.push([d.amount_label + " 금액", amtTxt(d)]);
   (d.dates || []).forEach(([k, v]) => items.push([k, v]));
   (d.texts || []).forEach(([k, v]) => items.push([k, typeof v === "number" ? v.toLocaleString() : v]));
-  return items.length ? `<div class="evkv">${items.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join("")}</div>`
+  if (d.uses?.length) items.push(["자금 용도", d.uses.map(([k, v]) => `${k} ${v >= 1e8 ? eok(v) : v.toLocaleString() + "원"}`).join(" · ")]);
+  return items.length ? `<div class="evkv">${items.map(([k, v]) => `<span>${esc(k)}</span><b class="${/목적|사유|용도/.test(k) ? "wrapv" : ""}">${esc(v)}</b>`).join("")}</div>`
                       : `<div class="meta">원문에서 금액·일정을 찾지 못함 — DART 원문에서 확인</div>`;
 };
 const SEG_LABEL = {short:"단기", mid:"중기", long:"장기", watch:"모니터링"};
@@ -924,6 +930,7 @@ function openCompany(code) {
       ${c.memo ? `<div class="sub" style="margin:6px 0 0">메모: ${esc(c.memo)}</div>` : ""}
     </div>
     <div class="db">
+      ${infoCard(c)}
       <div class="card"><div class="bigscore"><b>${c.score.toFixed(0)}</b><span class="sub" style="margin:0">/ 100 여유자금 점수</span></div>
         <div class="sd">${Object.keys(W).map(k => `<span>${SDL[k]}</span><span class="bar"><i style="width:${(sd[k] / W[k]) * 100}%"></i></span><b class="num" style="text-align:right">${sd[k].toFixed(0)}/${W[k]}</b>`).join("")}</div>
       </div>
@@ -952,6 +959,31 @@ function openCompany(code) {
   history.replaceState(null, "", "#c=" + code);
   $("#drawer .x").onclick = closeCompany;
 }
+function infoCard(c) {
+  const i = c.info || {}, ct = c.contact;
+  const tel = v => v ? `<a href="tel:${esc(v.replace(/[^0-9]/g, ""))}">${esc(v)}</a>` : "";
+  const url = v => v ? `<a href="${esc(/^https?:/.test(v) ? v : "http://" + v)}" target="_blank" rel="noopener">${esc(v)}</a>` : "";
+  const rows = [
+    ["대표이사", esc(i.ceo || "")],
+    ["주소", i.addr ? `${esc(i.addr)}<button class="copy" data-copy="${esc(i.addr)}">복사</button>` : ""],
+    ["대표전화", tel(i.phone)],
+    ["팩스", esc(i.fax || "")],
+    ["홈페이지", url(i.url)],
+    ["IR", url(i.ir_url)],
+    ["공시 담당", ct ? [ct.title, ct.name].filter(Boolean).map(esc).join(" ") + (ct.phone ? ` · ${tel(ct.phone)}` : "")
+      + `<div class="meta">${dfmt(ct.date)} ${esc(ct.report_nm || "")} 작성책임자 기준</div>` : ""],
+    ["설립일", i.est_dt ? dfmt(i.est_dt) : ""],
+    ["결산월", i.acc_mt ? `${+i.acc_mt}월` : ""],
+  ].filter(([, v]) => v);
+  if (!rows.length) return "";
+  return `<div class="card"><h3>기업 정보 <span class="sub" style="font-weight:400">DART 기업개황 · 공시 표지</span></h3>
+    <div class="info">${rows.map(([k, v]) => `<span>${k}</span><div>${v}</div>`).join("")}</div></div>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest(".copy");
+  if (!b) return;
+  try { navigator.clipboard.writeText(b.dataset.copy); b.textContent = "복사됨"; setTimeout(() => b.textContent = "복사", 1200); } catch (err) {}
+});
 function closeCompany() {
   $("#modal").classList.remove("on"); document.body.style.overflow = "";
   history.replaceState(null, "", "#" + ($("#nav button.on")?.dataset.tab || "brief"));
