@@ -25,6 +25,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main   # 실행 시점의 최신 데이터와 비교 (트리거 커밋이 아니라)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

@@ -491,7 +491,7 @@ function renderBrief() {
   const t0 = todayIso(), t30 = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
   const sched = [];
   const seenS = new Set();
-  const CASH_DATES = /납입|지급|양수|양도|기간 시작|투자 시작/;  // 실제 자금이 오가는 날만
+  const CASH_DATES = /납입|지급|양수|양도|기간 시작|투자 시작|차입일|매도일|대여 시작|상환일|취득일/;  // 실제 자금이 오가는 날만
   D.events.filter(e => !e.detail?.old && !e.detail?.dup).forEach(e => (e.detail?.dates || []).forEach(([k, v]) => {
     if (v >= t0 && v <= t30 && CASH_DATES.test(k)) {
       const key = e.corp_code + e.category + k + v;
@@ -538,7 +538,7 @@ function segBtns(sel, cb) {
   });
 }
 // 정렬 기준: v = 값, def = 처음 눌렀을 때 방향(-1 내림차순, 1 오름차순)
-const firstSched = e => (e.detail?.dates || []).find(([k]) => /납입|지급|양수|양도|시작/.test(k))?.[1];
+const firstSched = e => (e.detail?.dates || []).find(([k]) => /납입|지급|양수|양도|시작|차입일|매도일|상환일|취득일/.test(k))?.[1];
 const EV_COLS = {
   date:   {l: "일자",   v: e => e.date + e.rcept_no, def: -1},
   type:   {l: "구분",   v: e => e.type, def: 1},

@@ -338,7 +338,29 @@ def update_events() -> tuple[list[dict], int]:
                 added += row["rcept_no"] not in store["events"]
                 store["events"][row["rcept_no"]] = _event_from_row(row, rule)
 
+    # 분류 규칙(event_rules·exclude_keywords)이 바뀌면 이미 훑은 기간도 다시 훑어야 새 규칙에 맞는 과거 공시가 잡힌다
+    import hashlib
+    rules_hash = hashlib.md5(json.dumps([CFG["event_rules"], dc.get("exclude_keywords", []), dc["pblntf_types"]],
+                                        sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:8]
+    if store["newest"] and store.get("rules_hash") != rules_hash:
+        store["rescan_from"] = store.get("oldest") or ymd(floor)
+        log(f"분류 규칙 변경 감지 — {store['rescan_from']}부터 공시 목록 다시 조회")
+    store["rules_hash"] = rules_hash
+
     try:
+        # ⓪ 규칙 변경 후 재조회 (중간에 멈추면 다음 실행이 이어서)
+        if store.get("rescan_from"):
+            cur = max(floor, parse_ymd(store["rescan_from"]))
+            stop = parse_ymd(store["newest"])
+            while cur <= stop:
+                b = min(cur + timedelta(days=6), stop)
+                ingest(cur, b)
+                cur = b + timedelta(days=1)
+                store["rescan_from"] = ymd(cur)
+                save_json(path, store)
+            store.pop("rescan_from", None)
+            save_json(path, store)
+
         # ① 최근 구간 (과거 → 오늘 방향)
         first_run = not store["newest"]
         if not first_run:
@@ -708,13 +730,21 @@ def update_details(events: list[dict]) -> None:
     global RULES_VER
     dc = CFG["details"]
     specs = dc["specs"]
-    # 규칙(config)이나 추출 코드가 바뀌면 캐시된 원문을 다시 추출
+    # 유형별 추출 규칙이 바뀌면 그 유형의 캐시만 다시 추출 (다른 유형은 재다운로드 안 함)
     import hashlib
-    RULES_VER = hashlib.md5((json.dumps({k: {kk: vv for kk, vv in v.items() if kk not in ("key_date", "merge_filings_days", "chain_lookup")}
-                                          for k, v in specs.items()}, sort_keys=True, ensure_ascii=False)
-                              + "|parser-3").encode()).hexdigest()[:8]
+    meta = ("key_date", "merge_filings_days", "chain_lookup")
+    VER = {c: "c" + hashlib.md5((json.dumps({k: v for k, v in sp.items() if k not in meta}, sort_keys=True,
+                                             ensure_ascii=False) + "|parser-3").encode()).hexdigest()[:8]
+           for c, sp in specs.items()}
+    RULES_VER = "chain-1"
     path = CACHE_DIR / "details.json"
     cache = load_json(path, {})
+    # 이전 방식(전체 규칙 하나의 버전) 캐시 이전: 규칙이 그대로인 유형은 유지
+    legacy_ok = set(dc.get("legacy_ok_categories", []))
+    cat_of = {e["rcept_no"]: e["category"] for e in events}
+    for rn, d in cache.items():
+        if d.get("v") == "a45a2344" and cat_of.get(rn) in legacy_ok:
+            d["v"] = VER[cat_of[rn]]
     probe: dict[str, list] = {}
     fetched = pending = 0
     try:
@@ -723,7 +753,7 @@ def update_details(events: list[dict]) -> None:
             if not spec:
                 continue
             rn = e["rcept_no"]
-            if rn in cache and cache[rn].get("v") == RULES_VER:
+            if rn in cache and cache[rn].get("v") == VER[e["category"]]:
                 continue
             if fetched >= dc["max_docs_per_run"]:
                 pending += 1
@@ -731,11 +761,11 @@ def update_details(events: list[dict]) -> None:
             text, err = dart_document(rn)
             fetched += 1
             if text is None:
-                cache[rn] = {"err": err, "v": RULES_VER}
+                cache[rn] = {"err": err, "v": VER[e["category"]]}
                 continue
             rows, corr = doc_tables(text)
             det = extract_detail(rows, spec, corr)
-            det["v"] = RULES_VER
+            det["v"] = VER[e["category"]]
             cache[rn] = det
             if dc.get("probe") and len(probe.setdefault(e["category"], [])) < dc.get("probe_per_category", 2):
                 probe[e["category"]].append({"rcept_no": rn, "report_nm": e["report_nm"], "corp_name": e["corp_name"],
