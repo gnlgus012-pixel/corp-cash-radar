@@ -1114,22 +1114,60 @@ def google_news(query: str, n: int) -> list[dict]:
     return out[:n]
 
 
+def _name_in(name: str, text: str) -> bool:
+    """법인명이 다른 단어의 일부가 아니라 그 자체로 나오는지 (예: '핑거' ≠ '골드핑거', '피노' ≠ '피노기오')"""
+    rx = (r"(?<![가-힣A-Za-z0-9])" + re.escape(name) +
+          r"(?=$|[^가-힣A-Za-z0-9]|[은는이가을를의에과와도로만측])")
+    return re.search(rx, text) is not None
+
+
+def clean_news(items: list[dict], must=(), exclude=(), name: str | None = None) -> list[dict]:
+    """최근 max_age_days 이내 · 스팸 제외 · 필수어 포함 · 중복 제거 · 최신순"""
+    nc = CFG["news"]
+    cutoff = (now_kst() - timedelta(days=nc.get("max_age_days", 7))).isoformat()
+    spam = nc.get("spam_words", [])
+    seen, out = set(), []
+    for i in sorted(items, key=lambda x: x["date"], reverse=True):
+        t = i["title"]
+        key = norm(t)[:40]
+        if not i["date"] or i["date"] < cutoff or key in seen:
+            continue
+        if any(w in t or w in i["desc"] for w in spam) or any(w in t for w in exclude):
+            continue
+        if must and not any(m.lower() in t.lower() for m in must):
+            continue
+        if name and not _name_in(name, t):
+            continue
+        seen.add(key)
+        out.append(i)
+    return out
+
+
 def collect_news(companies: list[dict]) -> tuple[list[dict], str]:
     use_naver = bool(NAVER_ID and NAVER_SECRET)
     source = "네이버 뉴스" if use_naver else "구글 뉴스"
-    search = naver_news if use_naver else google_news
     nc = CFG["news"]
+    days = nc.get("max_age_days", 7)
+
+    def search(q: str, n: int) -> list[dict]:
+        if use_naver:
+            return naver_news(q, n)
+        return google_news(f"{q} when:{days}d", n)  # 구글 뉴스 기간 연산자
+
     topics = []
-    for kw in nc["topic_keywords"]:
-        topics.append({"keyword": kw, "items": search(kw, nc["per_topic"])})
-        time.sleep(0.2)
+    for t in nc["topics"]:
+        raw = []
+        for q in t["queries"]:
+            raw += search(q, nc["fetch_per_query"])
+            time.sleep(0.2)
+        items = clean_news(raw, t.get("must", []), t.get("exclude", []))[: nc["per_topic"]]
+        topics.append({"keyword": t["name"], "items": items})
     for c in companies[: nc["top_companies"]]:
         q = c["name"] if use_naver else '"' + c["name"] + '"'
-        items = search(q, nc["per_company"] * 2)
-        c["news"] = [i for i in items if norm(c["name"]) in norm(i["title"] + i["desc"])][: nc["per_company"]]
+        c["news"] = clean_news(search(q, nc["per_company"] * 4), name=c["name"])[: nc["per_company"]]
         time.sleep(0.2)
     n_items = sum(len(t["items"]) for t in topics)
-    log(f"뉴스 수집 완료 ({source}, 주제 {len(topics)}개 {n_items}건)")
+    log(f"뉴스 수집 완료 ({source}, 최근 {days}일, 주제 {len(topics)}개 {n_items}건)")
     return topics, source
 
 
@@ -1162,6 +1200,9 @@ def fetch_rates() -> list[dict]:
             warn(f"금리 '{it['name']}' 데이터 없음 — 통계코드 확인 필요 ({j.get('RESULT')})")
             continue
         series.sort()
+        if it.get("transform") == "fed_upper":
+            # ECOS는 미국 정책금리를 목표범위 중간값(예: 3.875 = 3.75~4.00%)으로 제공 → 상단값으로 변환
+            series = [[t, round(v + 0.125, 3) if round(v * 1000) % 250 == 125 else v] for t, v in series]
         # 일별 기준금리처럼 주말까지 채워진 계열은 값이 바뀌는 날 + 마지막 날만 남겨 용량 절감
         if it.get("step"):
             series = [p for i, p in enumerate(series) if i == 0 or i == len(series) - 1 or p[1] != series[i - 1][1]]

@@ -752,7 +752,7 @@ function renderRates() {
     const d1 = kp.latest - up.latest;
     const d2 = kl && ul ? valueAt(kl.series, ul.date) - ul.latest : null;
     html += `<div class="rgroup"><h3>한·미 금리차</h3><div class="rtiles">
-      <div class="rtile"><div class="n">정책금리 (한국 − 미국)</div><div class="v">${d1 > 0 ? "+" : ""}${Math.round(d1 * 100)}bp</div><div class="dd">한국 ${kp.latest.toFixed(2)}% · 미국 ${up.latest.toFixed(2)}% (${rLabel(up.date)})</div></div>
+      <div class="rtile"><div class="n">정책금리 (한국 − 미국 상단)</div><div class="v">${d1 > 0 ? "+" : ""}${Math.round(d1 * 100)}bp</div><div class="dd">한국 ${kp.latest.toFixed(2)}% · 미국 ${up.latest.toFixed(2)}% (${rLabel(up.date)})</div></div>
       ${d2 != null ? `<div class="rtile"><div class="n">장기금리 10년 (한국 − 미국)</div><div class="v">${d2 > 0 ? "+" : ""}${Math.round(d2 * 100)}bp</div><div class="dd">${rLabel(ul.date)} 월평균 기준</div></div>` : ""}
     </div></div>`;
   }
@@ -764,9 +764,9 @@ const RATE_CHARTS = [
   {id: "rc1", title: "국내 단기금리", keys: ["base", "call", "cd", "cp"], note: "기준금리는 변경일 기준 계단형"},
   {id: "rc2", title: "국내 채권금리", keys: ["ktb3", "ktb10", "aa"]},
   {id: "rc3", title: "신용스프레드 (회사채 AA- − 국고채 3년)", spread: ["aa", "ktb3"], unit: "bp"},
-  {id: "rc4", title: "한·미 정책금리", keys: ["kr_policy_m", "us_policy"], names: ["한국", "미국"], monthly: true},
+  {id: "rc4", title: "한·미 정책금리", keys: ["kr_policy_m", "us_policy"], names: ["한국", "미국(상단)"], monthly: true, note: "미국은 연준 목표범위 상단"},
   {id: "rc5", title: "한·미 장기금리 (10년)", keys: ["kr_long_m", "us_long"], names: ["한국", "미국"], monthly: true},
-  {id: "rc6", title: "미국 금리", keys: ["us_policy", "us_short", "us_long"], names: ["정책금리", "단기(3개월)", "장기(10년)"], monthly: true},
+  {id: "rc6", title: "미국 금리", keys: ["us_policy", "us_short", "us_long"], names: ["정책금리(상단)", "단기(3개월)", "장기(10년)"], monthly: true},
 ];
 function drawRateCharts() {
   if (!D.rates?.length) return;
