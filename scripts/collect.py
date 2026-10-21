@@ -470,7 +470,8 @@ def parse_financials(rows: list[dict]) -> dict:
             if f["cash"] is None and (aid == "ifrs-full_CashAndCashEquivalents" or nm == "현금및현금성자산"):
                 f["cash"] = cur
                 f["cash_prev"] = to_int(r.get("frmtrm_amount"))
-            elif alt is None and nm in ("현금및예치금", "현금및예금", "현금및현금성자산및예치금"):
+            elif alt is None and re.match(r"현금", re.sub(r"^[ⅠⅡⅢⅣIVX0-9.\-]+", "", nm)) and ("예치금" in nm or nm.endswith("현금및예금")):
+                # '현금및예치금', 'Ⅰ.현금및예치금', '현금및상각후원가측정예치금' 등
                 alt = (cur, to_int(r.get("frmtrm_amount")))
             elif f["st_fin"] is None and nm in ("단기금융상품", "단기금융자산"):
                 f["st_fin"] = cur
@@ -505,7 +506,7 @@ def parse_financials(rows: list[dict]) -> dict:
     return f
 
 
-FIN_VER = "fin3"
+FIN_VER = "fin4"
 FIN_INDUSTRY = ("641", "649", "651", "652", "653", "661", "662")  # 은행·여신·보험·증권 등 (지주회사 64992는 계정으로 판별)
 
 
