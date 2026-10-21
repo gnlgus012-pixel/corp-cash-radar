@@ -1018,7 +1018,11 @@ def update_details(events: list[dict]) -> dict:
     for e in sorted(events, key=lambda x: x["rcept_no"], reverse=True):
         ct = (cache.get(e["rcept_no"]) or {}).get("contact")
         if ct and e["corp_code"] not in contacts:
-            contacts[e["corp_code"]] = ct | {"rcept_no": e["rcept_no"], "date": e["date"], "report_nm": e["report_nm"]}
+            nm = ct.get("name") or ""
+            if re.fullmatch(r"[가-힣 ]+", nm) and len(nm.replace(" ", "")) <= 4:
+                nm = nm.replace(" ", "")  # '송 세열' → '송세열'
+            contacts[e["corp_code"]] = ct | {"name": nm or None, "rcept_no": e["rcept_no"], "date": e["date"],
+                                             "report_nm": e["report_nm"]}
     log(f"작성책임자 확보 {len(contacts):,}개사")
     STATS["contacts"] = len(contacts)
     return contacts
