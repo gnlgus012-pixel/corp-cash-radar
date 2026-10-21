@@ -458,6 +458,9 @@ def parse_financials(rows: list[dict]) -> dict:
     borrow_total = 0
     borrow_found = False
     borrow_excl = ("할인", "상환", "전환권", "이자", "미지급", "발행차금", "충당")
+    alt = None          # 금융회사: 현금및예치금
+    financial = False   # 은행·증권·보험·카드·캐피탈·금융지주 (영업상 예수·대출·보험 부채 보유)
+    fin_markers = ("예수부채", "고객예탁금", "대출채권", "보험계약부채", "보험계약마진", "책임준비금", "투자계약부채")
     for r in rows:
         sj = r.get("sj_div", "")
         aid = r.get("account_id", "") or ""
@@ -467,12 +470,16 @@ def parse_financials(rows: list[dict]) -> dict:
             if f["cash"] is None and (aid == "ifrs-full_CashAndCashEquivalents" or nm == "현금및현금성자산"):
                 f["cash"] = cur
                 f["cash_prev"] = to_int(r.get("frmtrm_amount"))
+            elif alt is None and nm in ("현금및예치금", "현금및예금", "현금및현금성자산및예치금"):
+                alt = (cur, to_int(r.get("frmtrm_amount")))
             elif f["st_fin"] is None and nm in ("단기금융상품", "단기금융자산"):
                 f["st_fin"] = cur
             elif f["assets"] is None and (aid == "ifrs-full_Assets" or nm == "자산총계"):
                 f["assets"] = cur
             elif f["liabilities"] is None and (aid == "ifrs-full_Liabilities" or nm == "부채총계"):
                 f["liabilities"] = cur
+            elif any(k in nm for k in fin_markers):
+                financial = True
             elif ("차입금" in nm or "사채" in nm) and not any(x in nm for x in borrow_excl):
                 if cur is not None:
                     borrow_total += cur
@@ -485,7 +492,18 @@ def parse_financials(rows: list[dict]) -> dict:
             if f["revenue"] is None and (aid == "ifrs-full_Revenue" or nm in ("매출액", "수익(매출액)", "영업수익")):
                 f["revenue"] = to_int(r.get("thstrm_add_amount")) or cur
     f["borrowings"] = borrow_total if borrow_found else 0
+    if f["cash"] is None and alt:
+        f["cash"], f["cash_prev"] = alt
+        f["cash_label"] = "현금및예치금"
+        financial = True
+    if financial:
+        f["financial"] = True
+    f["v"] = FIN_VER
     return f
+
+
+FIN_VER = "fin2"
+FIN_INDUSTRY = ("641", "649", "651", "652", "653", "661", "662")  # 은행·여신·보험·증권 등 (지주회사 64992는 계정으로 판별)
 
 
 def report_candidates(today: date) -> list[tuple[int, str]]:
@@ -512,7 +530,7 @@ def fetch_latest_fin(corp_code: str) -> dict | None:
     return None
 
 
-def update_financials(universe: dict) -> dict:
+def update_financials(universe: dict, infos: dict | None = None) -> dict:
     cache_path = CACHE_DIR / "financials.json"
     cache = load_json(cache_path, {})
     ttl = CFG["financials"]["refresh_days"]
@@ -524,7 +542,10 @@ def update_financials(universe: dict) -> dict:
         for c in order:
             cc = c["corp_code"]
             hit = cache.get(cc)
-            if hit and (now - datetime.fromisoformat(hit["fetched_at"])).days < ttl:
+            ind = ((infos or {}).get(cc) or {}).get("induty_code", "")
+            stale_parse = bool(hit and hit.get("fin") and hit["fin"].get("v") != FIN_VER and (
+                hit["fin"].get("cash") is None or ind.startswith(FIN_INDUSTRY) or ind == "64992"))
+            if hit and not stale_parse and (now - datetime.fromisoformat(hit["fetched_at"])).days < ttl:
                 continue
             if fetched >= cap:
                 skipped += 1
@@ -1114,6 +1135,10 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
             metrics[cc] = None
             continue
         cash = (f["cash"] or 0) + (f["st_fin"] or 0)
+        if f.get("financial"):
+            # 금융회사는 예수·차입·보험부채가 영업 자체라 순현금·현금비중·현금증감으로 여유자금을 볼 수 없음 → 점수 미적용
+            metrics[cc] = {"cash_total": cash, "net_cash": None, "cash_ratio": None, "cash_growth": None, "financial": True}
+            continue
         net = cash - (f["borrowings"] or 0)
         ratio = cash / f["assets"] if f["assets"] else None
         growth = ((f["cash"] - f["cash_prev"]) / f["cash_prev"]
@@ -1134,7 +1159,7 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
         inflow_cats = {e["category"] for e in live if e["type"] == "유입" and e["date"] >= score_floor}
         ev_pts = min(len(inflow_cats) * sc["points_per_inflow_category"], w["inflow_event"])
         detail = {
-            "net_cash": round(r_net.get(cc, 0) * w["net_cash"], 1) if m else 0,
+            "net_cash": round(r_net.get(cc, 0) * w["net_cash"], 1) if m and m["net_cash"] is not None else 0,
             "cash_ratio": round(r_ratio.get(cc, 0) * w["cash_ratio"], 1) if m and m["cash_ratio"] is not None else 0,
             "cash_growth": round(r_growth.get(cc, 0) * w["cash_growth"], 1) if m and m["cash_growth"] is not None else 0,
             "inflow_event": ev_pts,
@@ -1144,9 +1169,9 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
         recent_inflow = [e for e in live if e["type"] == "유입" and e["date"] >= short_floor]
         if recent_inflow:
             seg = "short"
-        elif m and m["net_cash"] > 0 and (m["cash_ratio"] or 0) >= seg_cfg["long_min_cash_ratio"]:
+        elif m and m["net_cash"] is not None and m["net_cash"] > 0 and (m["cash_ratio"] or 0) >= seg_cfg["long_min_cash_ratio"]:
             seg = "long"
-        elif m and m["net_cash"] > 0:
+        elif m and m["net_cash"] is not None and m["net_cash"] > 0:
             seg = "mid"
         else:
             seg = "watch"
@@ -1157,7 +1182,11 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
             d = f"{e['date'][:4]}.{e['date'][4:6]}.{e['date'][6:]}"
             extra = fmt_event_detail(e)
             points.append(f"{d} {e['category']} 공시{f' ({extra})' if extra else ''} — {e['hint']}")
-        if m:
+        if m and m.get("financial"):
+            f = fins[cc]
+            points.append(f"금융회사 — {f.get('cash_label', '현금및현금성자산')} {eok(m['cash_total'])} "
+                          f"(예수·차입이 영업 자체라 순현금·현금비중 지표 미적용, 공시로만 판단)")
+        elif m:
             f = fins[cc]
             line = f"순현금 {eok(m['net_cash'])} (현금성 {eok(m['cash_total'])} − 차입 {eok(f['borrowings'])})"
             if m["cash_ratio"] is not None:
@@ -1395,11 +1424,13 @@ def main() -> int:
     universe = build_universe(events, corp_map, watch)
     log(f"분석 대상 {len(universe):,}개사 (관심법인 {len(watch)}개)")
 
-    fins = update_financials(universe)
-    contacts = update_details(events) if CFG.get("details", {}).get("enabled") else {}
     infos = update_company_info(universe)
+    fins = update_financials(universe, infos)
+    contacts = update_details(events) if CFG.get("details", {}).get("enabled") else {}
     companies = score_companies(universe, fins, events)
     for c in companies:
+        if (c.get("metrics") or {}).get("financial"):
+            c["financial"] = True
         if infos.get(c["corp_code"]):
             c["info"] = infos[c["corp_code"]]
         if contacts.get(c["corp_code"]):

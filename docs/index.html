@@ -683,7 +683,7 @@ function renderScreen() {
   <tbody>${rows.slice(0, 500).map(c => {
     const m = c.metrics;
     return `<tr class="click" data-co="${esc(c.corp_code)}">
-      <td><b>${esc(c.name)}</b> ${c.watch ? '<span class="tag gray">관심</span>' : ""}<div class="sub" style="margin:0">${esc(c.market_label)}${c.stock_code ? " · " + esc(c.stock_code) : ""}</div></td>
+      <td><b>${esc(c.name)}</b> ${c.watch ? '<span class="tag gray">관심</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}<div class="sub" style="margin:0">${esc(c.market_label)}${c.stock_code ? " · " + esc(c.stock_code) : ""}</div></td>
       <td class="num">${scoreCell(c.score)}</td><td>${segTag(c.segment)}</td>
       <td class="num">${eok(m?.cash_total)}</td>
       <td class="num" style="color:${m && m.net_cash < 0 ? "var(--out)" : "inherit"}">${eok(m?.net_cash)}</td>
@@ -926,7 +926,7 @@ function openCompany(code) {
   $("#drawer").innerHTML = `
     <div class="dh"><button class="x" aria-label="닫기">×</button>
       <h2>${esc(c.name)}</h2>
-      <div class="tags"><span class="tag gray">${esc(c.market_label)}</span>${c.stock_code ? `<span class="tag gray">${esc(c.stock_code)}</span>` : ""}${segTag(c.segment)}${c.watch ? '<span class="tag gray">관심법인</span>' : ""}</div>
+      <div class="tags"><span class="tag gray">${esc(c.market_label)}</span>${c.stock_code ? `<span class="tag gray">${esc(c.stock_code)}</span>` : ""}${segTag(c.segment)}${c.watch ? '<span class="tag gray">관심법인</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}</div>
       ${c.memo ? `<div class="sub" style="margin:6px 0 0">메모: ${esc(c.memo)}</div>` : ""}
     </div>
     <div class="db">
@@ -939,8 +939,8 @@ function openCompany(code) {
         <div class="sub" style="margin:0">${esc(seg.condition || "")}</div></div>
       <div class="card"><h3>재무 요약 ${f ? `<span class="sub" style="font-weight:400">${esc(f.period)} · ${esc(f.fs)} · 원문 확인 권장</span>` : ""}</h3>
         ${f ? `<div class="kv">
-          <div><span>현금및현금성자산</span><b>${eok(f.cash)}</b></div><div><span>단기금융상품</span><b>${eok(f.st_fin)}</b></div>
-          <div><span>차입금·사채 (근사)</span><b>${eok(f.borrowings)}</b></div><div><span>순현금</span><b style="color:${m.net_cash < 0 ? "var(--out)" : "var(--in)"}">${eok(m.net_cash)}</b></div>
+          <div><span>${esc(f.cash_label || "현금및현금성자산")}</span><b>${eok(f.cash)}</b></div><div><span>단기금융상품</span><b>${eok(f.st_fin)}</b></div>
+          <div><span>차입금·사채 (근사)</span><b>${c.financial ? "금융업 미적용" : eok(f.borrowings)}</b></div><div><span>순현금</span><b style="color:${m.net_cash == null ? "inherit" : m.net_cash < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? "금융업 미적용" : eok(m.net_cash)}</b></div>
           <div><span>자산총계</span><b>${eok(f.assets)}</b></div><div><span>현금/자산</span><b>${pct(m.cash_ratio)}</b></div>
           <div><span>현금 (전기말)</span><b>${eok(f.cash_prev)}</b></div><div><span>현금 증감</span><b>${pct(m.cash_growth, 1)}</b></div>
           <div><span>영업활동현금흐름</span><b>${eok(f.ocf)}</b></div><div><span>매출 (누적)</span><b>${eok(f.revenue)}</b></div>
