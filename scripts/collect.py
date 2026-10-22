@@ -458,6 +458,8 @@ def parse_financials(rows: list[dict]) -> dict:
     borrow_total = 0
     borrow_found = False
     borrow_excl = ("할인", "상환", "전환권", "이자", "미지급", "발행차금", "충당")
+    items: list = []    # 차입금·사채로 합산한 계정
+    skipped: list = []  # 이름 때문에 빠졌을 수 있는 차입성 계정
     alt = None          # 금융회사: 현금및예치금
     financial = False   # 은행·증권·보험·카드·캐피탈·금융지주 (영업상 예수·대출·보험 부채 보유)
     fin_markers = ("예수부채", "고객예탁금", "대출채권", "보험계약부채", "보험계약마진", "책임준비금", "투자계약부채")
@@ -485,6 +487,9 @@ def parse_financials(rows: list[dict]) -> dict:
                 if cur is not None:
                     borrow_total += cur
                     borrow_found = True
+                    items.append([r.get("account_nm", "").strip(), cur])
+            elif nm in ("유동성장기부채", "유동성장기채무"):
+                skipped.append([r.get("account_nm", "").strip(), cur])  # 차입금·사채 이름이 없어 합산 안 함 (확인용 기록)
         elif sj == "CF":
             if f["ocf"] is None and (aid == "ifrs-full_CashFlowsFromUsedInOperatingActivities"
                                      or ("영업활동" in nm and "현금흐름" in nm)):
@@ -493,6 +498,9 @@ def parse_financials(rows: list[dict]) -> dict:
             if f["revenue"] is None and (aid == "ifrs-full_Revenue" or nm in ("매출액", "수익(매출액)", "영업수익")):
                 f["revenue"] = to_int(r.get("thstrm_add_amount")) or cur
     f["borrowings"] = borrow_total if borrow_found else 0
+    f["borrow_items"] = items
+    if skipped:
+        f["borrow_skipped"] = skipped
     if f["cash"] is None and not alt:  # 진단용: 현금 계정 후보 이름 기록
         f["cash_candidates"] = sorted({r.get("account_nm", "") for r in rows
                                        if r.get("sj_div") == "BS" and "현금" in r.get("account_nm", "")})[:8]
@@ -508,7 +516,7 @@ def parse_financials(rows: list[dict]) -> dict:
     return f
 
 
-FIN_VER = "fin4"
+FIN_VER = "fin5"
 FIN_INDUSTRY = ("641", "649", "651", "652", "653", "661", "662")  # 은행·여신·보험·증권 등 (지주회사 64992는 계정으로 판별)
 
 
@@ -541,7 +549,9 @@ def update_financials(universe: dict, infos: dict | None = None) -> dict:
     cache = load_json(cache_path, {})
     ttl = CFG["financials"]["refresh_days"]
     cap = CFG["financials"]["max_companies_per_run"]
-    order = sorted(universe.values(), key=lambda c: not c["watch"])  # 관심법인 먼저
+    # 관심법인 → 자산 큰 순 (재수집 시 큰 회사부터)
+    order = sorted(universe.values(), key=lambda c: (not c["watch"],
+                                                     -(((cache.get(c["corp_code"]) or {}).get("fin") or {}).get("assets") or 0)))
     fetched = skipped = 0
     now = now_kst()
     try:
@@ -549,8 +559,7 @@ def update_financials(universe: dict, infos: dict | None = None) -> dict:
             cc = c["corp_code"]
             hit = cache.get(cc)
             ind = ((infos or {}).get(cc) or {}).get("induty_code", "")
-            stale_parse = bool(hit and hit.get("fin") and hit["fin"].get("v") != FIN_VER and (
-                hit["fin"].get("cash") is None or ind.startswith(FIN_INDUSTRY) or ind == "64992"))
+            stale_parse = bool(hit and hit.get("fin") and hit["fin"].get("v") != FIN_VER)
             if hit and not stale_parse and (now - datetime.fromisoformat(hit["fetched_at"])).days < ttl:
                 continue
             if fetched >= cap:

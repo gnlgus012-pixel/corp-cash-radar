@@ -998,7 +998,10 @@ function openCompany(code) {
           <div><span>자산총계</span><b>${eok(f.assets)}</b></div><div><span>현금/자산</span><b>${pct(m.cash_ratio ?? (m.excluded && f.assets ? m.cash_total / f.assets : null))}</b></div>
           <div><span>현금 (전기말)</span><b>${eok(f.cash_prev)}</b></div><div><span>현금 증감</span><b>${pct(m.cash_growth, 1)}</b></div>
           <div><span>영업활동현금흐름</span><b>${eok(f.ocf)}</b></div><div><span>매출 (누적)</span><b>${eok(f.revenue)}</b></div>
-        </div>` : `<div class="sub" style="margin:0">DART API에서 재무를 확보하지 못했습니다.</div>`}</div>
+        </div>${!c.financial && f.borrow_items ? `<details style="margin-top:8px;font-size:12.5px"><summary style="cursor:pointer;color:var(--ink-2)">차입금·사채 구성 보기 (${f.borrow_items.length}개 계정)</summary>
+          <div class="evkv" style="margin-top:6px">${f.borrow_items.map(([k, v]) => `<span>${esc(k)}</span><b>${eok(v)}</b>`).join("") || "<span>합산한 계정 없음</span><b></b>"}</div>
+          ${f.borrow_skipped?.length ? `<div class="meta" style="margin-top:6px">합산 안 함(계정명에 차입금·사채 없음): ${f.borrow_skipped.map(([k, v]) => `${esc(k)} ${eok(v)}`).join(", ")}</div>` : ""}
+          <div class="meta" style="margin-top:4px">재무상태표에서 계정명에 '차입금'·'사채'가 들어간 행 합계 (할인·상환·이자·발행차금 등 제외). 연결 기준이면 금융 자회사 차입도 포함</div></details>` : ""}` : `<div class="sub" style="margin:0">DART API에서 재무를 확보하지 못했습니다.</div>`}</div>
       <div class="card"><h3>자금 공시 <span class="sub" style="font-weight:400">최근 ${D.meta.lookback_days}일 ${evs.length}건</span></h3>
         <div>${evs.map(e => `<div class="evbox">
           <div class="evhead"><div><div class="t">${typeTag(e.type)} <b>${esc(e.category)}</b> <span class="meta">${dfmt(e.date)} 공시</span></div>
