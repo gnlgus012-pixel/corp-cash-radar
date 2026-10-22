@@ -11,19 +11,19 @@
       "id": "mid",
       "name": "중기",
       "horizon": "3~12개월",
-      "condition": "순현금 보유, 현금/자산 비중 15% 미만"
+      "condition": "현금성자산 보유, 현금/자산 비중 15% 미만"
     },
     {
       "id": "long",
       "name": "장기",
       "horizon": "1년 이상",
-      "condition": "순현금 보유, 현금/자산 비중 15% 이상"
+      "condition": "현금/자산 비중 15% 이상"
     },
     {
       "id": "watch",
       "name": "모니터링",
       "horizon": "-",
-      "condition": "순차입 상태 또는 재무 미확보"
+      "condition": "재무 미확보·금융업·수치 오류 의심"
     }
   ]
 }

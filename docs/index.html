@@ -316,7 +316,7 @@ tbody tr.click:hover{background:var(--surface-2)}
   <!-- 스크리너 -->
   <section class="tab" id="t-screen">
     <h2>여유자금 법인 스크리너</h2>
-    <p class="sub">순현금·현금비중·현금증감·유입공시로 산출한 100점 만점 점수. 행을 누르면 상세.</p>
+    <p class="sub">현금성자산 총량(현금 + 단기금융상품)·현금/자산·현금증감·유입공시 각 25점, 100점 만점. 순현금은 참고용(점수 미반영). 행을 누르면 상세.</p>
     <div class="filters">
       <select id="s-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
       <select id="s-seg"><option value="">모든 자금 성격</option></select>
@@ -339,7 +339,7 @@ tbody tr.click:hover{background:var(--surface-2)}
   <!-- 자금 성격별 -->
   <section class="tab" id="t-prod">
     <h2>자금 성격별 법인</h2>
-    <p class="sub">자금 유입 시점·순현금·현금비중으로 예상 운용기간을 나눴습니다. 점수순.</p>
+    <p class="sub">자금 유입 시점과 현금/자산 비중으로 예상 운용기간을 나눴습니다. 점수순.</p>
     <div class="grid g3" id="segcards"></div>
   </section>
 
@@ -732,8 +732,8 @@ const SC_COLS = [
   {k: "name", l: "법인", v: c => c.name},
   {k: "score", l: "점수", num: 1, v: c => c.score},
   {k: "segment", l: "자금 성격", v: c => c.segment},
-  {k: "cash", l: "현금성자산", num: 1, v: c => c.metrics?.cash_total},
-  {k: "net", l: "순현금", num: 1, v: c => c.metrics?.net_cash},
+  {k: "cash", l: "현금성자산", num: 1, v: c => c.metrics?.cash_total, tip: "현금성자산 = 현금및현금성자산 + 단기금융상품 (점수 25점 기준)"},
+  {k: "net", l: "순현금 ⓘ", num: 1, v: c => c.metrics?.net_cash, tip: "순현금 = 현금성자산(현금 + 단기금융상품) − 차입금·사채. 재무 체력 참고용이며, 회사마다 차입금 표기가 달라 오차가 있을 수 있어 점수에는 반영하지 않음"},
   {k: "ratio", l: "현금/자산", num: 1, v: c => c.metrics?.cash_ratio, m: 1},
   {k: "growth", l: "현금증감", num: 1, v: c => c.metrics?.cash_growth, m: 1},
   {k: "last", l: "최근 공시", v: c => c.last_event_date},
@@ -751,7 +751,7 @@ function renderScreen() {
     return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * s.dir;
   });
   $("#sc-count").textContent = `${rows.length.toLocaleString()}개사`;
-  $("#scTable").innerHTML = `<thead><tr>${SC_COLS.map(c => `<th class="sort ${c.num ? "num" : ""} ${c.m ? "hide-m" : ""} ${s.sort === c.k ? (s.dir > 0 ? "asc" : "desc") : ""}" data-k="${c.k}">${c.l}</th>`).join("")}</tr></thead>
+  $("#scTable").innerHTML = `<thead><tr>${SC_COLS.map(c => `<th class="sort ${c.num ? "num" : ""} ${c.m ? "hide-m" : ""} ${s.sort === c.k ? (s.dir > 0 ? "asc" : "desc") : ""}" data-k="${c.k}"${c.tip ? ` title="${esc(c.tip)}"` : ""}>${c.l}</th>`).join("")}</tr></thead>
   <tbody>${rows.slice(0, 500).map(c => {
     const m = c.metrics;
     return `<tr class="click" data-co="${esc(c.corp_code)}">
@@ -993,8 +993,8 @@ function bindCo(root) {
 function openCompany(code) {
   const c = CO_BY_CODE[code];
   if (!c) return;
-  const m = c.metrics, f = c.fin, sd = c.score_detail, W = {net_cash: 40, cash_ratio: 20, cash_growth: 20, inflow_event: 20};
-  const SDL = {net_cash: "순현금", cash_ratio: "현금/자산", cash_growth: "현금 증감", inflow_event: "유입 공시"};
+  const m = c.metrics, f = c.fin, sd = c.score_detail, W = {cash_total: 25, cash_ratio: 25, cash_growth: 25, inflow_event: 25};
+  const SDL = {cash_total: "현금성자산", cash_ratio: "현금/자산", cash_growth: "현금 증감", inflow_event: "유입 공시"};
   const seg = D.segments.find(s => s.id === c.segment) || {};
   const evs = c.event_ids.map(id => EV_BY_ID[id]).filter(Boolean);
   $("#drawer").innerHTML = `
@@ -1015,11 +1015,12 @@ function openCompany(code) {
         ${c.flags?.length ? `<div class="flagbox"><b>확인이 필요한 데이터</b>${c.metrics?.excluded ? " — 여유자금 점수에서 재무 항목 제외" : ""}<ul>${c.flags.map(x => `<li>${esc(x.msg)}</li>`).join("")}</ul></div>` : ""}
         ${f ? `<div class="kv">
           <div><span>${esc(f.cash_label || "현금및현금성자산")}</span><b>${eok(f.cash)}</b></div><div><span>단기금융상품</span><b>${eok(f.st_fin)}</b></div>
-          <div><span>차입금·사채 (근사)</span><b>${c.financial ? why(c, "why") : whyCode(c) === "borrow" ? `${eok(f.borrowings)} ${why(c)}` : whyCode(c) === "dup" ? `${eok(f.borrowings)} ${why(c)}` : eok(f.borrowings)}</b></div><div><span>순현금</span><b style="color:${rawNet(c) == null ? "inherit" : rawNet(c) < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? why(c, "why") : rawNet(c) == null ? (why(c) || "-") : eok(rawNet(c)) + (["borrow", "dup", "unit"].includes(whyCode(c)) ? why(c) : chk(c))}</b></div>
+          <div><span>차입금·사채 (근사)</span><b>${c.financial ? why(c, "why") : whyCode(c) === "borrow" ? `${eok(f.borrowings)} ${why(c)}` : whyCode(c) === "dup" ? `${eok(f.borrowings)} ${why(c)}` : eok(f.borrowings)}</b></div><div><span title="순현금 = 현금성자산(현금 + 단기금융상품) − 차입금·사채. 참고용, 점수 미반영">순현금 <span class="meta">(참고)</span></span><b style="color:${rawNet(c) == null ? "inherit" : rawNet(c) < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? why(c, "why") : rawNet(c) == null ? (why(c) || "-") : eok(rawNet(c)) + (["borrow", "dup", "unit"].includes(whyCode(c)) ? why(c) : chk(c))}</b></div>
           <div><span>자산총계</span><b>${eok(f.assets)}</b></div><div><span>현금/자산</span><b>${c.financial ? '<span class="meta">금융업</span>' : pct(m.cash_ratio ?? (m.excluded && f.assets ? m.cash_total / f.assets : null))}</b></div>
           <div><span>현금 (전기말)</span><b>${eok(f.cash_prev)}</b></div><div><span>현금 증감</span><b>${c.financial ? '<span class="meta">금융업</span>' : pct(m.cash_growth, 1)}</b></div>
           <div><span>영업활동현금흐름</span><b>${eok(f.ocf)}</b></div><div><span>매출 (누적)</span><b>${eok(f.revenue)}</b></div>
-        </div>` : `<div class="sub" style="margin:0">DART API에서 재무를 확보하지 못했습니다.</div>`}</div>
+        </div>
+        <div class="meta" style="margin-top:8px">현금성자산 = 현금및현금성자산 + 단기금융상품 (점수 기준) · 순현금 = 현금성자산 − 차입금·사채 (참고용 — 회사마다 차입금 표기가 달라 오차 가능, 점수 미반영)</div>` : `<div class="sub" style="margin:0">DART API에서 재무를 확보하지 못했습니다.</div>`}</div>
       <div class="card"><h3>자금 공시 <span class="sub" style="font-weight:400">최근 ${D.meta.lookback_days}일 ${evs.length}건</span></h3>
         <div>${evs.map(e => `<div class="evbox">
           <div class="evhead"><div><div class="t">${typeTag(e.type)} <b>${esc(e.category)}</b> <span class="meta">${dfmt(e.date)} 공시</span></div>

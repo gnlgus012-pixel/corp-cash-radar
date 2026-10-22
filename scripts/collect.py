@@ -1232,7 +1232,9 @@ def score_companies(universe: dict, fins: dict, events: list[dict], ref: dict | 
             # 공시 수치 자체가 틀렸을 가능성이 큰 경우 → 순위 계산에서 제외 (값은 화면에 그대로 보여주고 '확인 필요' 표시)
             metrics[cc] = {**metrics[cc], "net_cash": None, "cash_ratio": None, "cash_growth": None, "excluded": True}
 
-    r_net = pct_rank({k: (m or {}).get("net_cash") for k, m in metrics.items()})
+    # 현금성자산 총량(현금 + 단기금융상품) 순위 — 금융회사·수치 오류 의심은 제외 (순현금은 차입금 표기 오차가 커서 점수에서 뺌, 표시만)
+    r_cash = pct_rank({k: m["cash_total"] for k, m in metrics.items()
+                       if m and not m.get("financial") and not m.get("excluded") and m.get("cash_total")})
     r_ratio = pct_rank({k: (m or {}).get("cash_ratio") for k, m in metrics.items()})
     r_growth = pct_rank({k: (m or {}).get("cash_growth") for k, m in metrics.items()})
     seg_by_id = {s["id"]: s for s in PRODUCTS["segments"]}
@@ -1246,7 +1248,7 @@ def score_companies(universe: dict, fins: dict, events: list[dict], ref: dict | 
         inflow_cats = {e["category"] for e in live if e["type"] == "유입" and e["date"] >= score_floor}
         ev_pts = min(len(inflow_cats) * sc["points_per_inflow_category"], w["inflow_event"])
         detail = {
-            "net_cash": round(r_net.get(cc, 0) * w["net_cash"], 1) if m and m["net_cash"] is not None else 0,
+            "cash_total": round(r_cash[cc] * w["cash_total"], 1) if cc in r_cash else 0,
             "cash_ratio": round(r_ratio.get(cc, 0) * w["cash_ratio"], 1) if m and m["cash_ratio"] is not None else 0,
             "cash_growth": round(r_growth.get(cc, 0) * w["cash_growth"], 1) if m and m["cash_growth"] is not None else 0,
             "inflow_event": ev_pts,
@@ -1256,9 +1258,9 @@ def score_companies(universe: dict, fins: dict, events: list[dict], ref: dict | 
         recent_inflow = [e for e in live if e["type"] == "유입" and e["date"] >= short_floor]
         if recent_inflow:
             seg = "short"
-        elif m and m["net_cash"] is not None and m["net_cash"] > 0 and (m["cash_ratio"] or 0) >= seg_cfg["long_min_cash_ratio"]:
+        elif m and m["cash_ratio"] is not None and m["cash_ratio"] >= seg_cfg["long_min_cash_ratio"]:
             seg = "long"
-        elif m and m["net_cash"] is not None and m["net_cash"] > 0:
+        elif m and m["cash_ratio"] is not None and (m["cash_total"] or 0) > 0:
             seg = "mid"
         else:
             seg = "watch"
@@ -1278,9 +1280,10 @@ def score_companies(universe: dict, fins: dict, events: list[dict], ref: dict | 
             points.append(f"재무 공시 수치 확인 필요 — {msg} (여유자금 점수에서 재무 항목 제외)")
         elif m:
             f = fins[cc]
-            line = f"순현금 {eok(m['net_cash'])} (현금성 {eok(m['cash_total'])} − 차입 {eok(f['borrowings'])})"
+            line = f"현금성자산 {eok(m['cash_total'])} (현금 {eok(f['cash'])} + 단기금융상품 {eok(f.get('st_fin'))})"
             if m["cash_ratio"] is not None:
-                line += f", 자산 대비 현금 {m['cash_ratio']:.0%}"
+                line += f", 자산 대비 {m['cash_ratio']:.0%}"
+            line += f" · 참고: 순현금 {eok(m['net_cash'])}"
             points.append(line)
             if m["cash_growth"] is not None and abs(m["cash_growth"]) >= 0.3:
                 g = m["cash_growth"]
