@@ -451,107 +451,51 @@ def build_universe(events: list[dict], corp_map: dict, watch: dict) -> dict:
     return u
 
 
-BORROW_RX = re.compile(r"차입금|사채|유동성장기부채|유동성장기채무|기업어음|차입부채")
-BORROW_EXCL = ("할인", "할증", "전환권", "이자", "미지급", "발행차금", "충당", "리스", "파생", "보증", "예수")
-INVEST_RX = re.compile(r"단기금융상품|단기금융자산|단기투자|단기매매|당기손익|상각후원가|단기예금|단기예치금|정기예금")
-INVEST_EXCL = ("대여금", "채권", "미수", "파생", "보증금", "선급", "리스")
-SUBTOTAL_RX = re.compile(r"및|총액$|^차입금$|^사채$|^차입부채$|^단기차입금및|^장기차입금및")
-
-
-def _drop_subtotals(items: list[list]) -> tuple[list, list]:
-    """[이름, 금액, 구분] 목록에서 소계 행 제거: 이름이 소계형(및·총액 등)이고, 바로 뒤 항목들의 합과 같으면 소계로 보고 뺀다."""
-    keep, dropped = [], []
-    for i, it in enumerate(items):
-        name, amt = it[0], it[1]
-        is_sub = False
-        if SUBTOTAL_RX.search(norm(name)) and amt:
-            acc = 0
-            for nxt in items[i + 1:]:
-                if nxt[2] != it[2]:
-                    break
-                acc += nxt[1] or 0
-                if abs(acc - amt) <= max(1, abs(amt) * 0.005):
-                    is_sub = True
-                    break
-                if acc > amt * 1.005:
-                    break
-        (dropped if is_sub else keep).append(it)
-    return keep, dropped
-
-
 def parse_financials(rows: list[dict]) -> dict:
-    """전체 재무제표 행 → 필요한 계정 (원 단위).
-    - 재무상태표를 표시 순서(ord)대로 읽으며 유동자산/비유동자산/유동부채/비유동부채 구간을 구분
-    - 현금성자산 = 현금및현금성자산 + 유동자산 구간의 단기투자자산(단기금융상품·FVPL·상각후원가 금융자산 등)
-    - 차입금 = 부채 구간에서 차입금·사채·유동성장기부채·기업어음 계정 (소계 행 제거), 유동부채 구간 = 1년 내 상환분
-    - 재무상태표에 차입금 계정이 따로 없으면 borrow_status='unknown' (0으로 두지 않음)"""
+    """전체 재무제표 행 → 필요한 계정만 추출 (원 단위)"""
     f = {"cash": None, "cash_prev": None, "st_fin": None, "assets": None, "liabilities": None,
-         "borrowings": None, "borrow_short": None, "borrow_long": None, "ocf": None, "revenue": None}
-    alt = None
-    financial = False
+         "borrowings": None, "ocf": None, "revenue": None}
+    borrow_total = 0
+    borrow_found = False
+    borrow_excl = ("할인", "상환", "전환권", "이자", "미지급", "발행차금", "충당")
+    alt = None          # 금융회사: 현금및예치금
+    financial = False   # 은행·증권·보험·카드·캐피탈·금융지주 (영업상 예수·대출·보험 부채 보유)
     fin_markers = ("예수부채", "고객예탁금", "대출채권", "보험계약부채", "보험계약마진", "책임준비금", "투자계약부채")
-    bs = sorted((r for r in rows if r.get("sj_div") == "BS"), key=lambda r: int(r.get("ord") or 0))
-    sec = ""
-    invest, borrow = [], []
-    for r in bs:
-        aid = r.get("account_id", "") or ""
-        raw = (r.get("account_nm") or "").strip()
-        nm = norm(raw)
-        nm0 = re.sub(r"^[ⅠⅡⅢⅣⅤIVX0-9.\-()]+", "", nm)
-        cur = to_int(r.get("thstrm_amount"))
-        # 구간 머리
-        if aid == "ifrs-full_CurrentAssets" or nm0 == "유동자산":
-            sec = "CA"; continue
-        if aid == "ifrs-full_NoncurrentAssets" or nm0 == "비유동자산":
-            sec = "NA"; continue
-        if aid == "ifrs-full_CurrentLiabilities" or nm0 == "유동부채":
-            sec = "CL"; continue
-        if aid == "ifrs-full_NoncurrentLiabilities" or nm0 == "비유동부채":
-            sec = "NL"; continue
-        if aid == "ifrs-full_Equity" or nm0 in ("자본", "자본총계") or nm0.startswith("지배기업"):
-            sec = "EQ"
-        if f["cash"] is None and (aid == "ifrs-full_CashAndCashEquivalents" or nm0 == "현금및현금성자산"):
-            f["cash"] = cur
-            f["cash_prev"] = to_int(r.get("frmtrm_amount"))
-        elif alt is None and re.match(r"현금", nm0) and ("예치금" in nm0 or nm0.endswith("현금및예금")):
-            alt = (cur, to_int(r.get("frmtrm_amount")))
-        elif f["assets"] is None and (aid == "ifrs-full_Assets" or nm0 == "자산총계"):
-            f["assets"] = cur; sec = ""
-        elif f["liabilities"] is None and (aid == "ifrs-full_Liabilities" or nm0 == "부채총계"):
-            f["liabilities"] = cur; sec = ""
-        elif any(k in nm for k in fin_markers):
-            financial = True
-        elif sec == "CA" and INVEST_RX.search(nm0) and not any(x in nm0 for x in INVEST_EXCL) and cur:
-            invest.append([raw, cur, "CA"])
-        elif sec in ("CL", "NL", "") and BORROW_RX.search(nm0) and not any(x in nm0 for x in BORROW_EXCL) and cur is not None:
-            if not sec:  # 구간 머리가 없는 표: 이름으로 유동 여부 판단
-                s_ = "CL" if re.search(r"단기|유동", nm0) else "NL"
-            else:
-                s_ = sec
-            borrow.append([raw, cur, s_])
     for r in rows:
-        sj, aid, nm = r.get("sj_div", ""), r.get("account_id", "") or "", norm(r.get("account_nm", ""))
+        sj = r.get("sj_div", "")
+        aid = r.get("account_id", "") or ""
+        nm = norm(r.get("account_nm", ""))
         cur = to_int(r.get("thstrm_amount"))
-        if sj == "CF" and f["ocf"] is None and (aid == "ifrs-full_CashFlowsFromUsedInOperatingActivities"
-                                                 or ("영업활동" in nm and "현금흐름" in nm)):
-            f["ocf"] = cur
-        elif sj in ("IS", "CIS") and f["revenue"] is None and (aid == "ifrs-full_Revenue" or nm in ("매출액", "수익(매출액)", "영업수익")):
-            f["revenue"] = to_int(r.get("thstrm_add_amount")) or cur
-
-    invest, inv_sub = _drop_subtotals(invest)
-    borrow, bor_sub = _drop_subtotals(borrow)
-    f["st_fin"] = sum(x[1] for x in invest) if invest else None
-    f["invest_items"] = invest
-    f["borrow_items"] = borrow
-    if inv_sub or bor_sub:
-        f["subtotal_dropped"] = inv_sub + bor_sub
-    if borrow:
-        f["borrow_short"] = sum(x[1] for x in borrow if x[2] == "CL")
-        f["borrow_long"] = sum(x[1] for x in borrow if x[2] == "NL")
-        f["borrowings"] = f["borrow_short"] + f["borrow_long"]
-        f["borrow_status"] = "bs"
-    else:
-        f["borrow_status"] = "unknown"   # 재무상태표 본문에 차입금 계정 없음 (금융부채 등으로 통합 표시) → 주석 확인 대상
+        if sj == "BS":
+            if f["cash"] is None and (aid == "ifrs-full_CashAndCashEquivalents" or nm == "현금및현금성자산"):
+                f["cash"] = cur
+                f["cash_prev"] = to_int(r.get("frmtrm_amount"))
+            elif alt is None and re.match(r"현금", re.sub(r"^[ⅠⅡⅢⅣIVX0-9.\-]+", "", nm)) and ("예치금" in nm or nm.endswith("현금및예금")):
+                # '현금및예치금', 'Ⅰ.현금및예치금', '현금및상각후원가측정예치금' 등
+                alt = (cur, to_int(r.get("frmtrm_amount")))
+            elif f["st_fin"] is None and nm in ("단기금융상품", "단기금융자산"):
+                f["st_fin"] = cur
+            elif f["assets"] is None and (aid == "ifrs-full_Assets" or nm == "자산총계"):
+                f["assets"] = cur
+            elif f["liabilities"] is None and (aid == "ifrs-full_Liabilities" or nm == "부채총계"):
+                f["liabilities"] = cur
+            elif any(k in nm for k in fin_markers):
+                financial = True
+            elif ("차입금" in nm or "사채" in nm) and not any(x in nm for x in borrow_excl):
+                if cur is not None:
+                    borrow_total += cur
+                    borrow_found = True
+        elif sj == "CF":
+            if f["ocf"] is None and (aid == "ifrs-full_CashFlowsFromUsedInOperatingActivities"
+                                     or ("영업활동" in nm and "현금흐름" in nm)):
+                f["ocf"] = cur
+        elif sj in ("IS", "CIS"):
+            if f["revenue"] is None and (aid == "ifrs-full_Revenue" or nm in ("매출액", "수익(매출액)", "영업수익")):
+                f["revenue"] = to_int(r.get("thstrm_add_amount")) or cur
+    f["borrowings"] = borrow_total if borrow_found else 0
+    if f["cash"] is None and not alt:  # 진단용: 현금 계정 후보 이름 기록
+        f["cash_candidates"] = sorted({r.get("account_nm", "") for r in rows
+                                       if r.get("sj_div") == "BS" and "현금" in r.get("account_nm", "")})[:8]
     if f["cash"] is None and alt:
         f["cash"], f["cash_prev"] = alt
         f["cash_label"] = "현금및예치금"
@@ -560,14 +504,11 @@ def parse_financials(rows: list[dict]) -> dict:
         f["financial"] = True
     if rows and rows[0].get("rcept_no"):
         f["rcept_no"] = rows[0]["rcept_no"]
-    if f["borrow_status"] == "unknown" and not financial:  # 확인용: 부채 구간 계정 목록
-        f["liab_accounts"] = [[(r.get("account_nm") or "").strip(), to_int(r.get("thstrm_amount")), r.get("account_id", "")]
-                              for r in bs if to_int(r.get("thstrm_amount"))][:60]
     f["v"] = FIN_VER
     return f
 
 
-FIN_VER = "fin6"
+FIN_VER = "fin7"  # 2026-10-22 별도 기준 시험 적용 후 연결 기준으로 원복 → 전체 재수집
 FIN_INDUSTRY = ("641", "649", "651", "652", "653", "661", "662")  # 은행·여신·보험·증권 등 (지주회사 64992는 계정으로 판별)
 
 
@@ -582,7 +523,7 @@ def report_candidates(today: date) -> list[tuple[int, str]]:
 
 def fetch_latest_fin(corp_code: str) -> dict | None:
     for year, code in report_candidates(now_kst().date()):
-        for fs in ("OFS", "CFS"):  # 별도 우선 (영업 상대는 개별 법인), 없으면 연결
+        for fs in ("CFS", "OFS"):  # 연결 우선, 없으면 별도
             j = dart_get("fnlttSinglAcntAll.json", corp_code=corp_code, bsns_year=str(year),
                          reprt_code=code, fs_div=fs)
             if j.get("status") == "000" and j.get("list"):
@@ -600,9 +541,7 @@ def update_financials(universe: dict, infos: dict | None = None) -> dict:
     cache = load_json(cache_path, {})
     ttl = CFG["financials"]["refresh_days"]
     cap = CFG["financials"]["max_companies_per_run"]
-    # 관심법인 → 자산 큰 순 (재수집 시 큰 회사부터)
-    order = sorted(universe.values(), key=lambda c: (not c["watch"],
-                                                     -(((cache.get(c["corp_code"]) or {}).get("fin") or {}).get("assets") or 0)))
+    order = sorted(universe.values(), key=lambda c: not c["watch"])  # 관심법인 먼저
     fetched = skipped = 0
     now = now_kst()
     try:
@@ -780,7 +719,7 @@ def parse_contact(rows: list[list[str]]) -> dict | None:
     return None
 
 
-def dart_document(rcept_no: str, max_mb: float | None = None) -> tuple[str | None, str]:
+def dart_document(rcept_no: str) -> tuple[str | None, str]:
     """공시 원문 본문 텍스트. 반환 (텍스트, 오류메시지)"""
     check_time()
     t0 = time.monotonic()
@@ -806,7 +745,7 @@ def dart_document(rcept_no: str, max_mb: float | None = None) -> tuple[str | Non
         raw = z.read(main_name)
     except Exception as e:
         return None, f"압축 해제 오류: {e}"
-    if len(raw) > (max_mb or CFG["details"]["max_doc_mb"]) * 1024 * 1024:
+    if len(raw) > CFG["details"]["max_doc_mb"] * 1024 * 1024:
         return None, f"원문이 너무 큼 ({len(raw) // 1024 // 1024}MB)"
     for enc in ("utf-8", "cp949", "euc-kr"):
         try:
@@ -1235,10 +1174,10 @@ def data_flags(f: dict, m: dict | None, ref_assets: int | None) -> list[dict]:
         fl.append({"code": "cash_gt_assets", "level": "error", "msg": "현금성자산이 자산총계보다 큼 — 공시 수치 확인 필요"})
     if b > li * 1.01:
         fl.append({"code": "borrow_gt_liab", "level": "warn",
-                   "msg": f"차입금·사채({eok(b)})가 부채총계({eok(li)})보다 큼 — 계정 중복 합산 가능, 여유자금 과소"})
-    if f.get("borrow_status") == "unknown" and not f.get("financial"):
-        fl.append({"code": "borrow_unknown", "level": "warn",
-                   "msg": "재무상태표에 차입금·사채 계정이 따로 없음(금융부채 등으로 통합 표시) — 여유자금 미산출, 주석 확인 필요"})
+                   "msg": f"차입금·사채({eok(b)})가 부채총계({eok(li)})보다 큼 — 계정 중복 합산 가능, 순현금 과소"})
+    if b == 0 and li / a >= 0.5:
+        fl.append({"code": "borrow_zero", "level": "warn",
+                   "msg": f"부채비율이 높은데(부채/자산 {li / a:.0%}) 차입금 0 — 계정명 미인식 가능, 순현금 과대"})
     if li > a:
         fl.append({"code": "impaired", "level": "warn", "msg": "부채총계가 자산총계보다 큼 (자본잠식)"})
     if m and (m.get("cash_growth") or 0) > 5:
@@ -1247,52 +1186,6 @@ def data_flags(f: dict, m: dict | None, ref_assets: int | None) -> list[dict]:
     if not f.get("period", "").startswith(str(now_kst().year)):
         fl.append({"code": "old", "level": "warn", "msg": f"재무 기준이 최신 아님 ({f.get('period')})"})
     return fl
-
-
-def probe_borrow_notes(fins: dict, universe: dict, limit: int = 12) -> None:
-    """[확인용·일시] 재무상태표에 차입금이 따로 없는 법인의 정기보고서 원문에서 '차입금·사채' 주석 표를 샘플로 저장"""
-    targets = [cc for cc, f in fins.items() if f and f.get("borrow_status") == "unknown" and not f.get("financial")
-               and f.get("rcept_no")]
-    targets.sort(key=lambda cc: -(fins[cc].get("liabilities") or 0))
-    out = {}
-    try:
-        for cc in targets[:limit]:
-            f = fins[cc]
-            text, err = dart_document(f["rcept_no"], max_mb=40)
-            name = universe.get(cc, {}).get("name", cc)
-            if not text:
-                out[name] = {"err": err}
-                continue
-            plain = re.sub(r"<[^>]+>", " ", text)
-            heads = [(m.start(), re.sub(r"\s+", " ", m.group(0))) for m in
-                     re.finditer(r"(연\s*결\s*)?재\s*무\s*제\s*표\s*주\s*석", plain)]
-            samples = []
-            for m in TABLE_RE.finditer(text):
-                before = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text[max(0, m.start() - 700):m.start()]))[-260:]
-                if not re.search(r"차입금|사채", before):
-                    continue
-                rows = [[_cell_text(c[1]) for c in CELL_RE.findall(tr)] for tr in TR_RE.findall(m.group(0))]
-                rows = [r for r in rows if any(r)]
-                if not rows or not any(re.search(r"차입|사채", " ".join(r)) for r in rows):
-                    continue
-                pos = len(re.sub(r"<[^>]+>", " ", text[:m.start()]))
-                sec = next((h for p_, h in reversed(heads) if p_ <= pos), "")
-                unit = re.search(r"단위\s*[:：]?\s*([^)\]]{1,10})", before)
-                samples.append({"section": sec, "before": before[-160:], "unit": unit.group(1).strip() if unit else None,
-                                "rows": [r[:7] for r in rows[:14]]})
-                if len(samples) >= 8:
-                    break
-            out[name] = {"rcept_no": f["rcept_no"], "fs": f.get("fs"), "period": f.get("period"),
-                         "liab_accounts": f.get("liab_accounts", [])[:40], "heads": [h for _, h in heads][:6],
-                         "tables": samples}
-    except (OutOfTime, DartError) as e:
-        warn(f"주석 차입금 샘플 수집 중단: {e}")
-    if out:
-        p_ = OUT_PATH.parent / "probe.json"
-        cur = load_json(p_, {})
-        cur["주석 차입금"] = out
-        save_json(p_, cur)
-        log(f"주석 차입금 샘플 {len(out)}개사 저장")
 
 
 # ───────────────────────── 점수·분류 ─────────────────────────
@@ -1325,26 +1218,21 @@ def score_companies(universe: dict, fins: dict, events: list[dict], ref: dict | 
             continue
         cash = (f["cash"] or 0) + (f["st_fin"] or 0)
         if f.get("financial"):
-            # 금융회사는 예수·차입·보험부채가 영업 자체라 여유자금 지표로 볼 수 없음 → 점수 미적용
-            metrics[cc] = {"cash_total": cash, "liquid": None, "net_cash": None, "cash_ratio": None, "cash_growth": None,
-                           "financial": True}
+            # 금융회사는 예수·차입·보험부채가 영업 자체라 순현금·현금비중·현금증감으로 여유자금을 볼 수 없음 → 점수 미적용
+            metrics[cc] = {"cash_total": cash, "net_cash": None, "cash_ratio": None, "cash_growth": None, "financial": True}
             continue
-        known = f.get("borrow_status") in ("bs", "notes")
-        # 단기 여유자금 = 현금성자산 − 1년 내 갚을 차입금 / 순현금 = 현금성자산 − 총차입금 (차입금 미확인이면 계산 안 함)
-        liquid = cash - (f.get("borrow_short") or 0) if known else None
-        net = cash - (f.get("borrowings") or 0) if known else None
+        net = cash - (f["borrowings"] or 0)
         ratio = cash / f["assets"] if f["assets"] else None
         growth = ((f["cash"] - f["cash_prev"]) / f["cash_prev"]
                   if f["cash"] is not None and f["cash_prev"] else None)
-        metrics[cc] = {"cash_total": cash, "liquid": liquid, "net_cash": net, "cash_ratio": ratio, "cash_growth": growth}
+        metrics[cc] = {"cash_total": cash, "net_cash": net, "cash_ratio": ratio, "cash_growth": growth}
     flags = {cc: data_flags(fins.get(cc), metrics.get(cc), (ref or {}).get(cc)) for cc in universe}
     for cc, fl in flags.items():
         if any(x["level"] == "error" for x in fl) and metrics.get(cc):
             # 공시 수치 자체가 틀렸을 가능성이 큰 경우 → 순위 계산에서 제외 (값은 화면에 그대로 보여주고 '확인 필요' 표시)
-            metrics[cc] = {**metrics[cc], "liquid": None, "net_cash": None, "cash_ratio": None, "cash_growth": None,
-                           "excluded": True}
+            metrics[cc] = {**metrics[cc], "net_cash": None, "cash_ratio": None, "cash_growth": None, "excluded": True}
 
-    r_liq = pct_rank({k: (m or {}).get("liquid") for k, m in metrics.items()})
+    r_net = pct_rank({k: (m or {}).get("net_cash") for k, m in metrics.items()})
     r_ratio = pct_rank({k: (m or {}).get("cash_ratio") for k, m in metrics.items()})
     r_growth = pct_rank({k: (m or {}).get("cash_growth") for k, m in metrics.items()})
     seg_by_id = {s["id"]: s for s in PRODUCTS["segments"]}
@@ -1358,7 +1246,7 @@ def score_companies(universe: dict, fins: dict, events: list[dict], ref: dict | 
         inflow_cats = {e["category"] for e in live if e["type"] == "유입" and e["date"] >= score_floor}
         ev_pts = min(len(inflow_cats) * sc["points_per_inflow_category"], w["inflow_event"])
         detail = {
-            "liquid": round(r_liq.get(cc, 0) * w["liquid"], 1) if m and m.get("liquid") is not None else 0,
+            "net_cash": round(r_net.get(cc, 0) * w["net_cash"], 1) if m and m["net_cash"] is not None else 0,
             "cash_ratio": round(r_ratio.get(cc, 0) * w["cash_ratio"], 1) if m and m["cash_ratio"] is not None else 0,
             "cash_growth": round(r_growth.get(cc, 0) * w["cash_growth"], 1) if m and m["cash_growth"] is not None else 0,
             "inflow_event": ev_pts,
@@ -1368,9 +1256,9 @@ def score_companies(universe: dict, fins: dict, events: list[dict], ref: dict | 
         recent_inflow = [e for e in live if e["type"] == "유입" and e["date"] >= short_floor]
         if recent_inflow:
             seg = "short"
-        elif m and m.get("liquid") is not None and m["liquid"] > 0 and (m["cash_ratio"] or 0) >= seg_cfg["long_min_cash_ratio"]:
+        elif m and m["net_cash"] is not None and m["net_cash"] > 0 and (m["cash_ratio"] or 0) >= seg_cfg["long_min_cash_ratio"]:
             seg = "long"
-        elif m and m.get("liquid") is not None and m["liquid"] > 0:
+        elif m and m["net_cash"] is not None and m["net_cash"] > 0:
             seg = "mid"
         else:
             seg = "watch"
@@ -1390,11 +1278,7 @@ def score_companies(universe: dict, fins: dict, events: list[dict], ref: dict | 
             points.append(f"재무 공시 수치 확인 필요 — {msg} (여유자금 점수에서 재무 항목 제외)")
         elif m:
             f = fins[cc]
-            if m.get("liquid") is not None:
-                line = (f"단기 여유자금 {eok(m['liquid'])} (현금성 {eok(m['cash_total'])} − 1년 내 차입 {eok(f.get('borrow_short'))}), "
-                        f"순현금 {eok(m['net_cash'])} · {f.get('fs', '')} 기준")
-            else:
-                line = f"현금성 {eok(m['cash_total'])} — 차입금이 재무상태표에 따로 없어 여유자금 미산출 (주석 확인 필요)"
+            line = f"순현금 {eok(m['net_cash'])} (현금성 {eok(m['cash_total'])} − 차입 {eok(f['borrowings'])})"
             if m["cash_ratio"] is not None:
                 line += f", 자산 대비 현금 {m['cash_ratio']:.0%}"
             points.append(line)
@@ -1634,13 +1518,9 @@ def main() -> int:
     infos = update_company_info(universe)
     fins = update_financials(universe, infos)
     contacts = update_details(events) if CFG.get("details", {}).get("enabled") else {}
-    if CFG["financials"].get("probe_notes"):
-        probe_borrow_notes(fins, universe)
     ref = update_ref_assets(fins)
     companies = score_companies(universe, fins, events, ref)
     for c in companies:
-        if c.get("fin"):
-            c["fin"] = {k: v for k, v in c["fin"].items() if k not in ("liab_accounts", "v")}
         if (c.get("metrics") or {}).get("financial"):
             c["financial"] = True
         if infos.get(c["corp_code"]):

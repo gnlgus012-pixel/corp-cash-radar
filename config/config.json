@@ -273,24 +273,23 @@
   "financials": {
     "refresh_days": 14,
     "max_companies_per_run": 2500,
-    "_설명": "재무는 캐시해서 14일마다 갱신, 1회 실행당 최대 800개사 (DART 일일 한도 보호)",
-    "probe_notes": true
+    "_설명": "재무는 캐시해서 14일마다 갱신, 1회 실행당 최대 800개사 (DART 일일 한도 보호)"
   },
   "scoring": {
     "weights": {
-      "liquid": 40,
+      "net_cash": 40,
       "cash_ratio": 20,
       "cash_growth": 20,
       "inflow_event": 20
     },
     "points_per_inflow_category": 10,
-    "_설명": "단기 여유자금(현금성자산 − 1년 내 차입금)·현금비중·현금증감은 분석 대상 내 백분위, 유입 공시는 최근 inflow_window_days(90일) 내 서로 다른 유형 1개당 10점(최대 20). 재무는 별도 우선",
+    "_설명": "재무 3개 항목은 분석 대상 내 백분위 순위로 환산, 유입 공시는 최근 inflow_window_days(90일) 내 서로 다른 유형 1개당 10점(최대 20)",
     "inflow_window_days": 90
   },
   "segments": {
     "short_window_days": 90,
     "long_min_cash_ratio": 0.15,
-    "_설명": "최근 90일 내 유입 공시 → 단기, 단기 여유자금>0 & 현금/자산≥15% → 장기, 단기 여유자금>0 → 중기, 그 외·차입금 미확인 → 모니터링"
+    "_설명": "최근 90일 내 유입 공시 → 단기, 순현금>0 & 현금/자산≥15% → 장기, 순현금>0 → 중기, 그 외 → 모니터링"
   },
   "news": {
     "_설명": "주제별 queries 를 각각 검색해 합친 뒤, 최근 max_age_days 이내 · 제목에 must 중 하나 포함 · exclude/스팸어 제외 · 최신순",

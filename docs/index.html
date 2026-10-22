@@ -314,7 +314,7 @@ tbody tr.click:hover{background:var(--surface-2)}
   <!-- 스크리너 -->
   <section class="tab" id="t-screen">
     <h2>여유자금 법인 스크리너</h2>
-    <p class="sub">단기 여유자금(현금성자산 − 1년 내 갚을 차입금)·현금비중·현금증감·유입공시로 산출한 100점 만점 점수. 재무는 별도 우선. 행을 누르면 상세.</p>
+    <p class="sub">순현금·현금비중·현금증감·유입공시로 산출한 100점 만점 점수. 행을 누르면 상세.</p>
     <div class="filters">
       <select id="s-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
       <select id="s-seg"><option value="">모든 자금 성격</option></select>
@@ -325,13 +325,13 @@ tbody tr.click:hover{background:var(--surface-2)}
       <span class="count" id="sc-count"></span>
     </div>
     <div class="tw"><table id="scTable"></table></div>
-    <p class="disclaimer">재무는 DART 최근 정기보고서의 별도 재무상태표 기준(없으면 연결)입니다. 단기 여유자금 = 현금성자산 + 단기투자자산 − 1년 내 갚을 차입금·사채. 재무상태표에 차입금이 따로 없는 회사는 "차입 미확인"으로 표시하고 계산하지 않습니다.</p>
+    <p class="disclaimer">재무는 DART 최근 정기보고서 기준이며 차입금은 계정명 기반 근사치입니다. 상세 화면의 기준 보고서를 함께 확인하세요.</p>
   </section>
 
   <!-- 자금 성격별 -->
   <section class="tab" id="t-prod">
     <h2>자금 성격별 법인</h2>
-    <p class="sub">자금 유입 시점·단기 여유자금·현금비중으로 예상 운용기간을 나눴습니다. 점수순.</p>
+    <p class="sub">자금 유입 시점·순현금·현금비중으로 예상 운용기간을 나눴습니다. 점수순.</p>
     <div class="grid g3" id="segcards"></div>
   </section>
 
@@ -407,11 +407,7 @@ const evFull = e => {  // 상세: 금액 + 모든 일정 + 기타
 // 재무 수치 이상 신호 → '확인필요' 표시 (마우스를 올리면 사유)
 const flagTxt = c => (c.flags || []).map(x => x.msg).join("\n");
 const chk = c => c.flags?.length ? `<span class="chk" title="${esc(flagTxt(c))}">${c.flags.some(x => x.level === "error") ? "수치 확인필요" : "확인필요"}</span>` : "";
-// 점수에서 빠진 '수치 확인필요' 법인도 값은 보여주기 위해 원자료로 다시 계산
-const known = c => ["bs", "notes"].includes(c.fin?.borrow_status);
-const rawNet = c => c.metrics ? (c.metrics.net_cash ?? (c.metrics.excluded && known(c) ? c.metrics.cash_total - (c.fin.borrowings || 0) : null)) : null;
-const rawLiq = c => c.metrics ? (c.metrics.liquid ?? (c.metrics.excluded && known(c) ? c.metrics.cash_total - (c.fin.borrow_short || 0) : null)) : null;
-const unk = c => !c.financial && c.fin && !known(c) ? `<span class="chk" title="재무상태표에 차입금·사채 계정이 따로 없음 — 주석 확인 필요">차입 미확인</span>` : "";
+const rawNet = c => c.metrics ? (c.metrics.net_cash ?? (c.metrics.excluded && c.fin ? c.metrics.cash_total - (c.fin.borrowings || 0) : null)) : null;
 // 자금 일정 종류 (원문 일정 이름 → 필터 표시명)
 const SCHED_KIND = {"납입일": "납입일", "양수예정일": "양수·취득 예정일", "양도예정일": "양도·처분 예정일", "지급예정일": "배당 지급예정일",
   "기간 시작": "자사주 매매 시작일", "투자 시작": "시설투자 시작일", "매도일": "자기사채 매도대금 수령일", "취득일": "사채 조기취득 지급일",
@@ -715,8 +711,7 @@ const SC_COLS = [
   {k: "score", l: "점수", num: 1, v: c => c.score},
   {k: "segment", l: "자금 성격", v: c => c.segment},
   {k: "cash", l: "현금성자산", num: 1, v: c => c.metrics?.cash_total},
-  {k: "liq", l: "단기 여유자금", num: 1, v: c => c.metrics?.liquid},
-  {k: "net", l: "순현금", num: 1, v: c => c.metrics?.net_cash, m: 1},
+  {k: "net", l: "순현금", num: 1, v: c => c.metrics?.net_cash},
   {k: "ratio", l: "현금/자산", num: 1, v: c => c.metrics?.cash_ratio, m: 1},
   {k: "growth", l: "현금증감", num: 1, v: c => c.metrics?.cash_growth, m: 1},
   {k: "last", l: "최근 공시", v: c => c.last_event_date},
@@ -728,10 +723,7 @@ function renderScreen() {
     (!s.mkt || c.market === s.mkt) && (!s.seg || c.segment === s.seg) && c.score >= s.min &&
     (!s.fin || c.metrics) && (!s.watch || c.watch) && (!q || c.name.replace(/\s/g, "").includes(q)));
   const col = SC_COLS.find(x => x.k === s.sort);
-  const money = ["cash", "liq", "net", "ratio", "growth"].includes(s.sort);
   rows.sort((a, b) => {
-    // 단위 오류 의심 등 '수치 확인필요' 법인은 금액·비율 정렬에서 맨 뒤로 (잘못된 큰 숫자가 상위에 끼지 않도록)
-    if (money) { const ea = !!a.metrics?.excluded, eb = !!b.metrics?.excluded; if (ea !== eb) return ea ? 1 : -1; }
     const va = col.v(a), vb = col.v(b);
     if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
     return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * s.dir;
@@ -741,15 +733,14 @@ function renderScreen() {
   <tbody>${rows.slice(0, 500).map(c => {
     const m = c.metrics;
     return `<tr class="click" data-co="${esc(c.corp_code)}">
-      <td><b>${esc(c.name)}</b> ${c.watch ? '<span class="tag gray">관심</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 여유자금·현금비중 점수 미적용">금융</span>' : ""}<div class="sub" style="margin:0">${esc(c.market_label)}${c.stock_code ? " · " + esc(c.stock_code) : ""}</div></td>
+      <td><b>${esc(c.name)}</b> ${c.watch ? '<span class="tag gray">관심</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}<div class="sub" style="margin:0">${esc(c.market_label)}${c.stock_code ? " · " + esc(c.stock_code) : ""}</div></td>
       <td class="num">${scoreCell(c.score)}</td><td>${segTag(c.segment)}</td>
-      <td class="num">${eok(m?.cash_total)}${m?.excluded ? chk(c) : ""}</td>
-      <td class="num" style="color:${rawLiq(c) < 0 ? "var(--out)" : "inherit"}">${c.financial ? "-" : eok(rawLiq(c))}${chk(c)}${unk(c)}</td>
-      <td class="num hide-m" style="color:${rawNet(c) < 0 ? "var(--out)" : "inherit"}">${c.financial ? "-" : eok(rawNet(c))}</td>
+      <td class="num">${eok(m?.cash_total)}</td>
+      <td class="num" style="color:${rawNet(c) < 0 ? "var(--out)" : "inherit"}">${eok(rawNet(c))}${chk(c)}</td>
       <td class="num hide-m">${pct(m?.cash_ratio)}</td><td class="num hide-m">${pct(m?.cash_growth, 1)}</td>
       <td>${c.last_event_date ? dfmt(c.last_event_date) : "-"}</td>
       <td class="hide-m">${c.fin ? `${esc(c.fin.period)} ${esc(c.fin.fs)}` : '<span class="tag gray">미확보</span>'}</td></tr>`;
-  }).join("") || `<tr><td colspan="10" class="empty">조건에 맞는 법인이 없습니다.</td></tr>`}</tbody>`;
+  }).join("") || `<tr><td colspan="9" class="empty">조건에 맞는 법인이 없습니다.</td></tr>`}</tbody>`;
   $$("#scTable th.sort").forEach(th => th.onclick = () => {
     if (s.sort === th.dataset.k) s.dir *= -1; else { s.sort = th.dataset.k; s.dir = SC_COLS.find(c => c.k === th.dataset.k).num ? -1 : 1; }
     renderScreen();
@@ -767,7 +758,7 @@ function renderProducts() {
       <div class="big">${cos.length.toLocaleString()}<small style="font-size:13px;color:var(--ink-3);font-weight:500"> 개사</small></div>
       <div class="list" style="margin-top:10px">${cos.slice(0, 8).map(c => `
         <div class="li click" data-co="${esc(c.corp_code)}"><div><div class="t">${esc(c.name)}</div>
-        <div class="d">${c.metrics ? (c.metrics.liquid != null ? `단기 여유자금 ${eok(c.metrics.liquid)}` : c.financial ? "금융회사" : `현금성 ${eok(c.metrics.cash_total)}`) : "재무 미확보"}${c.last_event_date ? ` · ${dshort(c.last_event_date)} 공시` : ""}</div></div>
+        <div class="d">${c.metrics ? `순현금 ${eok(c.metrics.net_cash)}` : "재무 미확보"}${c.last_event_date ? ` · ${dshort(c.last_event_date)} 공시` : ""}</div></div>
         <div class="r">${scoreCell(c.score)}</div></div>`).join("") || `<div class="empty">해당 법인 없음</div>`}</div>
       ${cos.length > 8 ? `<a href="#" data-seg="${esc(s.id)}" style="font-size:12.5px">전체 ${cos.length}개사 보기 →</a>` : ""}
     </div>`;
@@ -978,20 +969,20 @@ function bindCo(root) {
 function openCompany(code) {
   const c = CO_BY_CODE[code];
   if (!c) return;
-  const m = c.metrics, f = c.fin, sd = c.score_detail, W = {liquid: 40, cash_ratio: 20, cash_growth: 20, inflow_event: 20};
-  const SDL = {liquid: "단기 여유자금", cash_ratio: "현금/자산", cash_growth: "현금 증감", inflow_event: "유입 공시"};
+  const m = c.metrics, f = c.fin, sd = c.score_detail, W = {net_cash: 40, cash_ratio: 20, cash_growth: 20, inflow_event: 20};
+  const SDL = {net_cash: "순현금", cash_ratio: "현금/자산", cash_growth: "현금 증감", inflow_event: "유입 공시"};
   const seg = D.segments.find(s => s.id === c.segment) || {};
   const evs = c.event_ids.map(id => EV_BY_ID[id]).filter(Boolean);
   $("#drawer").innerHTML = `
     <div class="dh"><button class="x" aria-label="닫기">×</button>
       <h2>${esc(c.name)}</h2>
-      <div class="tags"><span class="tag gray">${esc(c.market_label)}</span>${c.stock_code ? `<span class="tag gray">${esc(c.stock_code)}</span>` : ""}${segTag(c.segment)}${c.watch ? '<span class="tag gray">관심법인</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 여유자금·현금비중 점수 미적용">금융</span>' : ""}</div>
+      <div class="tags"><span class="tag gray">${esc(c.market_label)}</span>${c.stock_code ? `<span class="tag gray">${esc(c.stock_code)}</span>` : ""}${segTag(c.segment)}${c.watch ? '<span class="tag gray">관심법인</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}</div>
       ${c.memo ? `<div class="sub" style="margin:6px 0 0">메모: ${esc(c.memo)}</div>` : ""}
     </div>
     <div class="db">
       ${infoCard(c)}
       <div class="card"><div class="bigscore"><b>${c.score.toFixed(0)}</b><span class="sub" style="margin:0">/ 100 여유자금 점수</span></div>
-        <div class="sd">${Object.keys(W).map(k => `<span>${SDL[k]}</span><span class="bar"><i style="width:${(sd[k] / W[k]) * 100}%"></i></span><b class="num" style="text-align:right">${sd[k].toFixed(0)}/${W[k]}</b>`).join("")}</div>
+        <div class="sd">${Object.keys(W).map(k => `<span>${SDL[k]}</span><span class="bar"><i style="width:${((sd[k] ?? 0) / W[k]) * 100}%"></i></span><b class="num" style="text-align:right">${(sd[k] ?? 0).toFixed(0)}/${W[k]}</b>`).join("")}</div>
       </div>
       <div class="card"><h3>영업 포인트</h3><ul class="points">${c.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>
       <div class="card"><h3>자금 성격 ${segTag(c.segment)} <span class="hz sub" style="font-weight:400">${esc(seg.horizon || "")}</span></h3>
@@ -999,20 +990,12 @@ function openCompany(code) {
       <div class="card"><h3>재무 요약 ${f ? `<span class="sub" style="font-weight:400">${esc(f.period)} · ${esc(f.fs)}${f.rcept_no ? ` · <a href="https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${esc(f.rcept_no)}" target="_blank" rel="noopener">재무제표 원문 ↗</a>` : " · 원문 확인 권장"}</span>` : ""}</h3>
         ${c.flags?.length ? `<div class="flagbox"><b>확인이 필요한 데이터</b>${c.metrics?.excluded ? " — 여유자금 점수에서 재무 항목 제외" : ""}<ul>${c.flags.map(x => `<li>${esc(x.msg)}</li>`).join("")}</ul></div>` : ""}
         ${f ? `<div class="kv">
-          <div><span>${esc(f.cash_label || "현금및현금성자산")}</span><b>${eok(f.cash)}</b></div><div><span>단기투자자산</span><b>${eok(f.st_fin)}</b></div>
-          <div><span>1년 내 차입금</span><b>${c.financial ? "금융업 미적용" : known(c) ? eok(f.borrow_short) : "미확인"}</b></div><div><span>장기 차입금</span><b>${c.financial ? "금융업 미적용" : known(c) ? eok(f.borrow_long) : "미확인"}</b></div>
-          <div><span><b>단기 여유자금</b></span><b style="color:${rawLiq(c) == null ? "inherit" : rawLiq(c) < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? "금융업 미적용" : rawLiq(c) == null ? "미산출" + unk(c) : eok(rawLiq(c)) + chk(c)}</b></div><div><span>순현금</span><b style="color:${rawNet(c) == null ? "inherit" : rawNet(c) < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? "금융업 미적용" : rawNet(c) == null ? "미산출" : eok(rawNet(c))}</b></div>
+          <div><span>${esc(f.cash_label || "현금및현금성자산")}</span><b>${eok(f.cash)}</b></div><div><span>단기금융상품</span><b>${eok(f.st_fin)}</b></div>
+          <div><span>차입금·사채 (근사)</span><b>${c.financial ? "금융업 미적용" : eok(f.borrowings)}</b></div><div><span>순현금</span><b style="color:${rawNet(c) == null ? "inherit" : rawNet(c) < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? "금융업 미적용" : eok(rawNet(c)) + chk(c)}</b></div>
           <div><span>자산총계</span><b>${eok(f.assets)}</b></div><div><span>현금/자산</span><b>${pct(m.cash_ratio ?? (m.excluded && f.assets ? m.cash_total / f.assets : null))}</b></div>
           <div><span>현금 (전기말)</span><b>${eok(f.cash_prev)}</b></div><div><span>현금 증감</span><b>${pct(m.cash_growth, 1)}</b></div>
           <div><span>영업활동현금흐름</span><b>${eok(f.ocf)}</b></div><div><span>매출 (누적)</span><b>${eok(f.revenue)}</b></div>
-        </div>${!c.financial ? `<details style="margin-top:8px;font-size:12.5px"><summary style="cursor:pointer;color:var(--ink-2)">계산 근거 보기 (계정별 금액)</summary>
-          <div class="evkv" style="margin-top:6px">
-            <span>현금및현금성자산</span><b>${eok(f.cash)}</b>
-            ${(f.invest_items || []).map(([k, v]) => `<span>+ ${esc(k)}</span><b>${eok(v)}</b>`).join("")}
-            ${(f.borrow_items || []).map(([k, v, sec]) => `<span>− ${esc(k)} <span class="meta">${sec === "CL" ? "유동(1년 내)" : "비유동"}</span></span><b>${eok(v)}</b>`).join("")}
-          </div>
-          ${f.subtotal_dropped?.length ? `<div class="meta" style="margin-top:6px">소계로 보고 중복 제외: ${f.subtotal_dropped.map(([k, v]) => `${esc(k)} ${eok(v)}`).join(", ")}</div>` : ""}
-          <div class="meta" style="margin-top:4px">단기 여유자금 = 현금및현금성자산 + 유동자산의 단기투자자산 − 유동부채의 차입금·사채·유동성장기부채 · 순현금은 비유동 차입금까지 차감 · 리스부채 제외 · ${esc(f.fs)} 재무상태표 기준</div></details>` : ""}` : `<div class="sub" style="margin:0">DART API에서 재무를 확보하지 못했습니다.</div>`}</div>
+        </div>` : `<div class="sub" style="margin:0">DART API에서 재무를 확보하지 못했습니다.</div>`}</div>
       <div class="card"><h3>자금 공시 <span class="sub" style="font-weight:400">최근 ${D.meta.lookback_days}일 ${evs.length}건</span></h3>
         <div>${evs.map(e => `<div class="evbox">
           <div class="evhead"><div><div class="t">${typeTag(e.type)} <b>${esc(e.category)}</b> <span class="meta">${dfmt(e.date)} 공시</span></div>
