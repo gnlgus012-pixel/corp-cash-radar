@@ -288,6 +288,13 @@ tbody tr.click:hover{background:var(--surface-2)}
       </div>
     </div>
     <div class="filters">
+      <div class="seg-btns" id="f-basis" title="공시가 나온 날 기준 / 실제 돈이 오가는 날(납입·양수도·지급 등) 기준">
+        <button data-v="disc" class="on">공시일 기준</button><button data-v="sched">자금 일정 기준</button>
+      </div>
+      <div class="seg-btns" id="f-srange" style="display:none">
+        <button data-v="past30">지난 30일</button><button data-v="n7">향후 7일</button><button data-v="n30" class="on">향후 30일</button><button data-v="n90">향후 90일</button><button data-v="all">전체</button>
+      </div>
+      <select id="f-skind" style="display:none"><option value="">모든 일정</option></select>
       <div class="seg-btns" id="f-period">
         <button data-v="7">7일</button><button data-v="30" class="on">30일</button><button data-v="90">90일</button><button data-v="180">6개월</button><button data-v="365">1년</button>
       </div>
@@ -401,6 +408,11 @@ const evFull = e => {  // 상세: 금액 + 모든 일정 + 기타
 const flagTxt = c => (c.flags || []).map(x => x.msg).join("\n");
 const chk = c => c.flags?.length ? `<span class="chk" title="${esc(flagTxt(c))}">${c.flags.some(x => x.level === "error") ? "수치 확인필요" : "확인필요"}</span>` : "";
 const rawNet = c => c.metrics ? (c.metrics.net_cash ?? (c.metrics.excluded && c.fin ? c.metrics.cash_total - (c.fin.borrowings || 0) : null)) : null;
+// 자금 일정 종류 (원문 일정 이름 → 필터 표시명)
+const SCHED_KIND = {"납입일": "납입일", "양수예정일": "양수·취득 예정일", "양도예정일": "양도·처분 예정일", "지급예정일": "배당 지급예정일",
+  "기간 시작": "자사주 매매 시작일", "투자 시작": "시설투자 시작일", "매도일": "자기사채 매도대금 수령일", "취득일": "사채 조기취득 지급일",
+  "대여 시작": "금전대여 시작일", "상환일": "차입금 상환일", "차입일": "차입일"};
+const schedOf = (e, kind) => (e.detail?.dates || []).filter(([k]) => (kind ? k === kind : k in SCHED_KIND));
 const SEG_LABEL = {short:"단기", mid:"중기", long:"장기", watch:"모니터링"};
 const segTag = s => `<span class="tag seg-${s}">${SEG_LABEL[s] || s}</span>`;
 const typeTag = t => `<span class="tag ${t === "유입" ? "in" : "out"}">${esc(t)}</span>`;
@@ -408,7 +420,7 @@ const scoreCell = s => `<span class="score">${s.toFixed(0)}<span class="bar"><i 
 
 let D, EV_BY_ID = {}, CO_BY_CODE = {};
 const st = {
-  ev: {period: 30, type: "", cat: "", mkt: "", q: "", sort: "date", dir: -1},
+  ev: {period: 30, type: "", cat: "", mkt: "", q: "", sort: "date", dir: -1, basis: "disc", srange: "n30", skind: ""},
   sc: {mkt: "", seg: "", min: 0, fin: false, watch: false, q: "", sort: "score", dir: -1},
   topic: 0,
 };
@@ -544,6 +556,17 @@ function initFlow() {
   $("#f-q").oninput = e => { st.ev.q = e.target.value.trim(); renderFlow(); };
   $("#f-sort").onchange = e => { st.ev.sort = e.target.value; st.ev.dir = EV_COLS[e.target.value].def; renderFlow(); };
   $("#f-dir").onclick = () => { st.ev.dir *= -1; renderFlow(); };
+  const kinds = new Set(D.events.flatMap(e => schedOf(e).map(([k]) => k)));
+  $("#f-skind").innerHTML += Object.keys(SCHED_KIND).filter(k => kinds.has(k)).map(k => `<option value="${esc(k)}">${SCHED_KIND[k]}</option>`).join("");
+  segBtns("#f-basis", v => {
+    st.ev.basis = v;
+    $("#f-period").style.display = v === "disc" ? "" : "none";
+    $("#f-srange").style.display = $("#f-skind").style.display = v === "sched" ? "" : "none";
+    st.ev.sort = v === "sched" ? "sched" : "date"; st.ev.dir = EV_COLS[st.ev.sort].def;
+    renderFlow();
+  });
+  segBtns("#f-srange", v => { st.ev.srange = v; renderFlow(); });
+  $("#f-skind").onchange = e => { st.ev.skind = e.target.value; renderFlow(); };
   renderFlow();
 }
 function segBtns(sel, cb) {
@@ -554,19 +577,35 @@ function segBtns(sel, cb) {
 // 정렬 기준: v = 값, def = 처음 눌렀을 때 방향(-1 내림차순, 1 오름차순)
 const firstSched = e => (e.detail?.dates || []).find(([k]) => /납입|지급|양수|양도|시작|차입일|매도일|상환일|취득일/.test(k))?.[1];
 const EV_COLS = {
-  date:   {l: "일자",   v: e => e.date + e.rcept_no, def: -1},
+  date:   {l: "공시일", v: e => e.date + e.rcept_no, def: -1},
   type:   {l: "구분",   v: e => e.type, def: 1},
   cat:    {l: "유형",   v: e => e.category, def: 1},
   name:   {l: "법인",   v: e => e.corp_name, def: 1},
   mkt:    {l: "시장",   v: e => e.corp_cls, def: 1},
   score:  {l: "점수",   v: e => CO_BY_CODE[e.corp_code]?.score, def: -1},
   amount: {l: "주요 내용", v: e => e.detail?.amount, def: -1},
-  sched:  {l: "일정",   v: e => e.detail?.old || e.detail?.dup ? null : firstSched(e), def: 1},  // 과거 정정·이후 정정 건은 맨 뒤
+  sched:  {l: "자금 일정", v: e => e._sd ? e._sd[1] : (e.detail?.old || e.detail?.dup ? null : firstSched(e)), def: 1},  // 과거 정정·이후 정정 건은 맨 뒤
   report: {l: "공시",   v: e => e.report_nm, def: 1},
 };
+function schedRange(r) {
+  const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`; };
+  return {past30: [d(-30), d(-1)], n7: [d(0), d(7)], n30: [d(0), d(30)], n90: [d(0), d(90)], all: ["0000", "9999"]}[r];
+}
 function renderFlow() {
   const f = st.ev, from = daysAgo(f.period), q = f.q.replace(/\s/g, "");
-  const inPeriod = D.events.filter(e => e.date >= from);
+  let inPeriod;
+  if (f.basis === "sched") {
+    // 실제 자금 일정이 기간 안에 있는 공시 (과거 발행분 정정·이후 정정된 공시는 제외)
+    const [a, b] = schedRange(f.srange);
+    inPeriod = D.events.filter(e => !e.detail?.old && !e.detail?.dup).filter(e => {
+      const hit = schedOf(e, f.skind).filter(([, v]) => v >= a && v <= b).sort((x, y) => x[1].localeCompare(y[1]));
+      e._sd = hit[0] || null;
+      return !!e._sd;
+    });
+  } else {
+    D.events.forEach(e => e._sd = null);
+    inPeriod = D.events.filter(e => e.date >= from);
+  }
   const rows = inPeriod.filter(e =>
     (!f.type || e.type === f.type) && (!f.cat || e.category === f.cat) && (!f.mkt || e.corp_cls === f.mkt) &&
     (!q || (e.corp_name + e.report_nm).replace(/\s/g, "").includes(q)));
@@ -583,7 +622,8 @@ function renderFlow() {
   inPeriod.forEach(e => { (byCat[e.category] ??= {type: e.type, n: 0}).n++; });
   const cats = Object.entries(byCat).sort((a, b) => a[1].type.localeCompare(b[1].type) || b[1].n - a[1].n);
   const max = Math.max(1, ...cats.map(c => c[1].n));
-  $("#cat-period").textContent = `최근 ${f.period}일`;
+  $("#cat-period").textContent = f.basis === "sched"
+    ? `자금 일정 ${$("#f-srange button.on")?.textContent || ""}${f.skind ? " · " + SCHED_KIND[f.skind] : ""}` : `최근 ${f.period}일`;
   $("#catTable").innerHTML = cats.length ? `<table><tbody>${cats.map(([k, v]) => `
     <tr class="click" data-cat="${esc(k)}"><td>${typeTag(v.type)} ${esc(k)}</td>
     <td style="width:45%"><div class="bar" style="width:100%"><i style="width:${v.n / max * 100}%;background:var(--${v.type === "유입" ? "in" : "out"})"></i></div></td>
@@ -593,15 +633,17 @@ function renderFlow() {
   const LIMIT = 400;
   $("#ev-count").textContent = `${rows.length.toLocaleString()}건${rows.length > LIMIT ? ` (상위 ${LIMIT}건 표시)` : ""}`;
   const th = (k, cls = "") => `<th class="sort ${cls} ${f.sort === k ? (f.dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${EV_COLS[k].l}</th>`;
-  $("#evTable").innerHTML = `<thead><tr>${th("date")}${th("type")}${th("cat")}${th("name")}${th("mkt", "hide-m")}${th("score", "num")}${th("amount")}${th("report")}</tr></thead><tbody>${
+  const sch = f.basis === "sched";
+  $("#evTable").innerHTML = `<thead><tr>${sch ? th("sched") : ""}${th("date")}${th("type")}${th("cat")}${th("name")}${th("mkt", "hide-m")}${th("score", "num")}${th("amount")}${th("report")}</tr></thead><tbody>${
     rows.slice(0, LIMIT).map(e => {
       const c = CO_BY_CODE[e.corp_code];
-      return `<tr class="click" data-co="${esc(e.corp_code)}"><td>${dfmt(e.date)}</td><td>${typeTag(e.type)}</td><td>${esc(e.category)}</td>
+      const sd = sch && e._sd ? `<td><b>${dfmt(e._sd[1].replaceAll("-", ""))}</b><div class="meta">${esc(SCHED_KIND[e._sd[0]] || e._sd[0])}</div></td>` : "";
+      return `<tr class="click" data-co="${esc(e.corp_code)}">${sd}<td>${dfmt(e.date)}</td><td>${typeTag(e.type)}</td><td>${esc(e.category)}</td>
       <td><b>${esc(e.corp_name)}</b></td><td class="hide-m">${{Y:"유가",K:"코스닥",N:"코넥스"}[e.corp_cls] || "기타"}</td>
       <td class="num">${c ? c.score.toFixed(0) : "-"}</td>
       <td>${evBrief(e) || '<span class="meta">-</span>'}</td>
       <td class="wrap">${esc(e.report_nm)} ${DART_LINK(e, "원문")}</td></tr>`;
-    }).join("") || `<tr><td colspan="8" class="empty">조건에 맞는 공시가 없습니다.</td></tr>`}</tbody>`;
+    }).join("") || `<tr><td colspan="${sch ? 9 : 8}" class="empty">조건에 맞는 공시가 없습니다.</td></tr>`}</tbody>`;
   $$("#evTable th.sort").forEach(h => h.onclick = () => {
     const k = h.dataset.k;
     if (f.sort === k) f.dir *= -1; else { f.sort = k; f.dir = EV_COLS[k].def; }
