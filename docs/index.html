@@ -183,6 +183,8 @@ tbody tr.click:hover{background:var(--surface-2)}
 .kv b{font-variant-numeric:tabular-nums}
 @media (max-width:520px){.kv{grid-template-columns:1fr}.kv div:nth-child(even){padding-left:0;border-left:0}.kv div:nth-child(odd){padding-right:0}}
 .points{margin:0;padding-left:18px}
+.why{display:inline-block;font-size:11px;font-weight:600;color:var(--ink-3);background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:0 5px;cursor:help;white-space:nowrap}
+.legend-why{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11.5px;color:var(--ink-3);margin:-4px 0 10px}
 .chk{display:inline-block;font-size:10.5px;font-weight:600;color:var(--warn);background:var(--warn-bg);border-radius:4px;padding:0 5px;margin-left:5px;vertical-align:1px;cursor:help;white-space:nowrap}
 .flagbox{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 11px;font-size:12.5px;margin:0 0 10px}
 .flagbox ul{margin:4px 0 0;padding-left:17px}
@@ -324,6 +326,12 @@ tbody tr.click:hover{background:var(--surface-2)}
       <input type="text" id="s-q" placeholder="법인명">
       <span class="count" id="sc-count"></span>
     </div>
+    <div class="legend-why">수치가 없거나 믿기 어려운 경우 표시 (마우스를 올리면 설명):
+      <span><span class="why">금융업 · 미산출</span> 은행·증권·보험 등</span>
+      <span><span class="chk">차입금 미확인</span> 차입금 계정 없음 → 순현금 과대 가능</span>
+      <span><span class="chk">차입금 중복 가능</span> 소계 중복 → 순현금 과소 가능</span>
+      <span><span class="chk">수치 오류 의심</span> 공시 단위 오류</span>
+      <span><span class="why">재무 미확보</span> 재무제표 없음</span></div>
     <div class="tw"><table id="scTable"></table></div>
     <p class="disclaimer">재무는 DART 최근 정기보고서 기준이며 차입금은 계정명 기반 근사치입니다. 상세 화면의 기준 보고서를 함께 확인하세요.</p>
   </section>
@@ -407,6 +415,20 @@ const evFull = e => {  // 상세: 금액 + 모든 일정 + 기타
 // 재무 수치 이상 신호 → '확인필요' 표시 (마우스를 올리면 사유)
 const flagTxt = c => (c.flags || []).map(x => x.msg).join("\n");
 const chk = c => c.flags?.length ? `<span class="chk" title="${esc(flagTxt(c))}">${c.flags.some(x => x.level === "error") ? "수치 확인필요" : "확인필요"}</span>` : "";
+// 수치가 비거나 믿기 어려운 이유를 짧은 라벨로 (마우스를 올리면 설명)
+const WHY = {
+  nofin: ["재무 미확보", "DART 정기보고서 재무제표를 API로 받지 못함 (비상장·미제출 등)"],
+  fin: ["금융업 · 미산출", "은행·증권·보험·카드·캐피탈·금융지주는 예금·차입·보험부채가 영업 자체라 순현금·현금비중을 계산하지 않음 (공시로만 판단)"],
+  unit: ["수치 오류 의심", "직전 보고서 대비 자산이 수십 배 이상 차이 — 공시 단위 오류 가능, 점수에서 재무 제외"],
+  noassets: ["재무 미기재", "자산총계 0 또는 미기재"],
+  borrow: ["차입금 미확인", "재무상태표에 '차입금·사채' 이름의 계정이 없어 차입금이 0으로 잡힘 (금융부채 등으로 묶어 표시하는 회사) — 순현금이 실제보다 크게 나올 수 있음, 주석 확인 필요"],
+  dup: ["차입금 중복 가능", "차입금·사채 합계가 부채총계보다 큼 — 소계와 세부 계정이 중복 합산됐을 수 있음, 순현금이 실제보다 작게 나올 수 있음"],
+};
+const whyCode = c => !c.fin ? "nofin" : c.financial ? "fin" : (c.flags || []).some(x => x.code === "unit") ? "unit"
+  : (c.flags || []).some(x => x.code === "no_assets") ? "noassets"
+  : (c.flags || []).some(x => x.code === "borrow_zero" || x.code === "borrow_unknown") || c.fin.borrowings == null ? "borrow"
+  : (c.flags || []).some(x => x.code === "borrow_gt_liab") ? "dup" : null;
+const why = (c, cls = "chk") => { const w = WHY[whyCode(c)]; return w ? `<span class="${cls}" title="${esc(w[1])}">${w[0]}</span>` : ""; };
 const rawNet = c => c.metrics ? (c.metrics.net_cash ?? (c.metrics.excluded && c.fin ? c.metrics.cash_total - (c.fin.borrowings || 0) : null)) : null;
 // 자금 일정 종류 (원문 일정 이름 → 필터 표시명)
 const SCHED_KIND = {"납입일": "납입일", "양수예정일": "양수·취득 예정일", "양도예정일": "양도·처분 예정일", "지급예정일": "배당 지급예정일",
@@ -735,9 +757,11 @@ function renderScreen() {
     return `<tr class="click" data-co="${esc(c.corp_code)}">
       <td><b>${esc(c.name)}</b> ${c.watch ? '<span class="tag gray">관심</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}<div class="sub" style="margin:0">${esc(c.market_label)}${c.stock_code ? " · " + esc(c.stock_code) : ""}</div></td>
       <td class="num">${scoreCell(c.score)}</td><td>${segTag(c.segment)}</td>
-      <td class="num">${eok(m?.cash_total)}</td>
-      <td class="num" style="color:${rawNet(c) < 0 ? "var(--out)" : "inherit"}">${eok(rawNet(c))}${chk(c)}</td>
-      <td class="num hide-m">${pct(m?.cash_ratio)}</td><td class="num hide-m">${pct(m?.cash_growth, 1)}</td>
+      <td class="num">${m ? eok(m.cash_total) : why(c, "why")}</td>
+      <td class="num" style="color:${rawNet(c) < 0 ? "var(--out)" : "inherit"}">${
+        ["nofin", "fin", "noassets"].includes(whyCode(c)) || rawNet(c) == null ? why(c, "why") || "-"
+        : eok(rawNet(c)) + (["borrow", "dup", "unit"].includes(whyCode(c)) ? why(c) : chk(c))}</td>
+      <td class="num hide-m">${m?.cash_ratio != null ? pct(m.cash_ratio) : `<span class="meta">${c.financial ? "금융업" : m?.excluded ? "오류 의심" : "-"}</span>`}</td><td class="num hide-m">${m?.cash_growth != null ? pct(m.cash_growth, 1) : `<span class="meta">${c.financial ? "금융업" : m?.excluded ? "오류 의심" : "-"}</span>`}</td>
       <td>${c.last_event_date ? dfmt(c.last_event_date) : "-"}</td>
       <td class="hide-m">${c.fin ? `${esc(c.fin.period)} ${esc(c.fin.fs)}` : '<span class="tag gray">미확보</span>'}</td></tr>`;
   }).join("") || `<tr><td colspan="9" class="empty">조건에 맞는 법인이 없습니다.</td></tr>`}</tbody>`;
@@ -991,9 +1015,9 @@ function openCompany(code) {
         ${c.flags?.length ? `<div class="flagbox"><b>확인이 필요한 데이터</b>${c.metrics?.excluded ? " — 여유자금 점수에서 재무 항목 제외" : ""}<ul>${c.flags.map(x => `<li>${esc(x.msg)}</li>`).join("")}</ul></div>` : ""}
         ${f ? `<div class="kv">
           <div><span>${esc(f.cash_label || "현금및현금성자산")}</span><b>${eok(f.cash)}</b></div><div><span>단기금융상품</span><b>${eok(f.st_fin)}</b></div>
-          <div><span>차입금·사채 (근사)</span><b>${c.financial ? "금융업 미적용" : eok(f.borrowings)}</b></div><div><span>순현금</span><b style="color:${rawNet(c) == null ? "inherit" : rawNet(c) < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? "금융업 미적용" : eok(rawNet(c)) + chk(c)}</b></div>
-          <div><span>자산총계</span><b>${eok(f.assets)}</b></div><div><span>현금/자산</span><b>${pct(m.cash_ratio ?? (m.excluded && f.assets ? m.cash_total / f.assets : null))}</b></div>
-          <div><span>현금 (전기말)</span><b>${eok(f.cash_prev)}</b></div><div><span>현금 증감</span><b>${pct(m.cash_growth, 1)}</b></div>
+          <div><span>차입금·사채 (근사)</span><b>${c.financial ? why(c, "why") : whyCode(c) === "borrow" ? `${eok(f.borrowings)} ${why(c)}` : whyCode(c) === "dup" ? `${eok(f.borrowings)} ${why(c)}` : eok(f.borrowings)}</b></div><div><span>순현금</span><b style="color:${rawNet(c) == null ? "inherit" : rawNet(c) < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? why(c, "why") : rawNet(c) == null ? (why(c) || "-") : eok(rawNet(c)) + (["borrow", "dup", "unit"].includes(whyCode(c)) ? why(c) : chk(c))}</b></div>
+          <div><span>자산총계</span><b>${eok(f.assets)}</b></div><div><span>현금/자산</span><b>${c.financial ? '<span class="meta">금융업</span>' : pct(m.cash_ratio ?? (m.excluded && f.assets ? m.cash_total / f.assets : null))}</b></div>
+          <div><span>현금 (전기말)</span><b>${eok(f.cash_prev)}</b></div><div><span>현금 증감</span><b>${c.financial ? '<span class="meta">금융업</span>' : pct(m.cash_growth, 1)}</b></div>
           <div><span>영업활동현금흐름</span><b>${eok(f.ocf)}</b></div><div><span>매출 (누적)</span><b>${eok(f.revenue)}</b></div>
         </div>` : `<div class="sub" style="margin:0">DART API에서 재무를 확보하지 못했습니다.</div>`}</div>
       <div class="card"><h3>자금 공시 <span class="sub" style="font-weight:400">최근 ${D.meta.lookback_days}일 ${evs.length}건</span></h3>
