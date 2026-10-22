@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import collect as C  # noqa: E402
 
-OUT = C.ROOT / "docs" / "data" / "audit.json"
+OUT = C.ROOT / "reports" / "audit.json"   # 사이트(docs/)에 공개되지 않는 위치
 DATA = C.ROOT / "docs" / "data" / "data.json"
 
 MONEY_WORDS = ["증자", "사채", "차입", "어음", "전자단기", "양수", "양도", "취득", "처분", "매각", "인수", "투자",
@@ -137,6 +137,7 @@ def main() -> int:
                                  for k, v in unmatched.most_common(150)],
         "matched_names_by_category": {k: v.most_common() for k, v in sorted(by_cat.items())},
     }
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     C.log(f"점검 완료: 전체 {len(all_rows):,}건 / 규칙 해당 {len(matched):,}건 / 대시보드 누락 {len(missing):,}건 / "
           f"규칙 밖 후보 {len(unmatched):,}종 / {out['elapsed_sec']}초")

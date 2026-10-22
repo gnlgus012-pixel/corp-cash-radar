@@ -1011,7 +1011,7 @@ def update_details(events: list[dict]) -> dict:
             h[label] = h.get(label, 0) + 1
     STATS["detail_hits"] = hit
     if dc.get("probe"):
-        save_json(OUT_PATH.parent / "probe.json", probe)
+        save_json(ROOT / "reports" / "probe.json", probe)
     log(f"공시 원문 신규 {fetched}건 처리")
     # 작성책임자가 없는 법인 → 그 법인의 최신 주요사항보고서·증권신고서(표지 있음) 원문에서 보충
     has = {e["corp_code"] for e in events if (cache.get(e["rcept_no"]) or {}).get("contact")}

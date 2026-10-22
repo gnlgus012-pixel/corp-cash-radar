@@ -225,9 +225,31 @@ tbody tr.click:hover{background:var(--surface-2)}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--ink-2);margin-bottom:6px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 @media (max-width:640px){.hide-m{display:none}.search input{width:150px}}
+/* 비밀번호 화면 */
+.gate{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
+.gate[hidden]{display:none}
+.gate form{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:28px 24px;width:100%;max-width:340px}
+.gate h2{margin:0 0 4px;font-size:18px;color:var(--ink)}
+.gate p{margin:0 0 16px;font-size:13px;color:var(--ink-2)}
+.gate input[type=password]{width:100%;box-sizing:border-box;padding:10px 12px;font-size:15px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink)}
+.gate label{display:flex;align-items:center;gap:6px;margin:10px 0 14px;font-size:13px;color:var(--ink-2)}
+.gate button{width:100%;padding:10px;font-size:15px;border:0;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer}
+.gate button:disabled{opacity:.6;cursor:default}
+.gate .err{color:var(--out);font-size:13px;min-height:18px;margin-top:10px}
 </style>
 </head>
 <body>
+<div class="gate" id="gate" hidden>
+  <form id="gateForm" autocomplete="on">
+    <h2>법인WM AI 레이더</h2>
+    <p>내부용 화면입니다. 비밀번호를 입력하세요.</p>
+    <input type="text" name="username" value="radar" autocomplete="username" hidden>
+    <input type="password" id="gatePw" autocomplete="current-password" placeholder="비밀번호" required>
+    <label><input type="checkbox" id="gateRemember" checked> 이 기기에서 기억</label>
+    <button type="submit" id="gateBtn">열기</button>
+    <div class="err" id="gateErr"></div>
+  </form>
+</div>
 <header>
   <div class="hd">
     <div class="logo"><i></i>법인WM AI 레이더</div>
@@ -238,6 +260,7 @@ tbody tr.click:hover{background:var(--surface-2)}
       <div class="sugg" id="sugg"></div>
     </div>
     <button class="themebtn" id="themebtn" title="화면 테마">◐</button>
+    <button class="themebtn" onclick="radarLock()" title="잠금 (이 기기에 저장된 비밀번호 지우기)">🔒</button>
   </div>
   <nav id="nav">
     <button data-tab="brief" class="on">브리핑</button>
@@ -459,13 +482,60 @@ themeBtn.onclick = () => {
   if (D) drawFlowChart();
 };
 
-/* ── 데이터 로드 ── */
+/* ── 데이터 로드 (암호화된 data.enc → 비밀번호로 복호화) ── */
+const ENC_SALT = new TextEncoder().encode("corp-cash-radar1"), ENC_ITER = 250000, KEY_STORE = "radar-key";
+async function deriveKey(pw) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({name: "PBKDF2", salt: ENC_SALT, iterations: ENC_ITER, hash: "SHA-256"},
+    base, {name: "AES-GCM", length: 256}, true, ["decrypt"]);
+}
+async function decrypt(buf, key) {
+  const b = new Uint8Array(buf), iv = b.slice(20, 32), ct = b.slice(32);
+  const plain = await crypto.subtle.decrypt({name: "AES-GCM", iv}, key, ct);   // 비밀번호가 틀리면 여기서 오류
+  const stream = new Blob([plain]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).json();
+}
+function askPassword(buf) {
+  return new Promise(resolve => {
+    const gate = $("#gate"), form = $("#gateForm"), pw = $("#gatePw"), err = $("#gateErr"), btn = $("#gateBtn");
+    gate.hidden = false; pw.focus();
+    form.onsubmit = async ev => {
+      ev.preventDefault();
+      btn.disabled = true; btn.textContent = "확인 중…"; err.textContent = "";
+      try {
+        const key = await deriveKey(pw.value);
+        const data = await decrypt(buf, key);
+        if ($("#gateRemember").checked) {
+          try { localStorage.setItem(KEY_STORE, JSON.stringify(await crypto.subtle.exportKey("jwk", key))); } catch(e) {}
+        }
+        gate.hidden = true; resolve(data);
+      } catch(e) {
+        err.textContent = "비밀번호가 맞지 않습니다."; pw.select();
+      } finally { btn.disabled = false; btn.textContent = "열기"; }
+    };
+  });
+}
 async function load() {
   if (window.__RADAR_DATA__) return window.__RADAR_DATA__;
-  const r = await fetch(`data/data.json?t=${Date.now()}`, {cache: "no-store"});
+  const r = await fetch(`data/data.enc?t=${Date.now()}`, {cache: "no-store"});
+  if (r.status === 404) {   // 아직 암호화 전 (SITE_PASSWORD 미설정)
+    const r2 = await fetch(`data/data.json?t=${Date.now()}`, {cache: "no-store"});
+    if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
+    return r2.json();
+  }
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+  const buf = await r.arrayBuffer();
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(KEY_STORE) || "null"); } catch(e) {}
+  if (saved) {
+    try {
+      const key = await crypto.subtle.importKey("jwk", saved, {name: "AES-GCM"}, true, ["decrypt"]);
+      return await decrypt(buf, key);
+    } catch(e) { try { localStorage.removeItem(KEY_STORE); } catch(_) {} }   // 비밀번호가 바뀐 경우
+  }
+  return askPassword(buf);
 }
+window.radarLock = () => { try { localStorage.removeItem(KEY_STORE); } catch(e) {} location.reload(); };
 load().then(init).catch(e => {
   $("main").innerHTML = `<div class="card empty">데이터를 불러오지 못했습니다 (${esc(e.message)}).<br>GitHub Actions 첫 실행이 끝났는지 확인하세요.</div>`;
 });

@@ -50,6 +50,13 @@ jobs:
           RADAR_TIME_BUDGET_MIN: "40"   # 이 시간이 지나면 모은 데까지 저장하고 정상 종료
         run: python scripts/collect.py
 
+      # 화면 데이터를 비밀번호로 암호화 (원본은 올리지 않음). SITE_PASSWORD 가 없으면 원본 그대로
+      - name: 암호화
+        if: always()
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: python scripts/seal.py seal docs/data/data.json docs/data/data.enc
+
       # 수집이 실패·중단돼도 그때까지 모은 캐시는 저장 → 다음 실행이 이어서 수집
       - name: 캐시 저장
         if: always()
@@ -63,8 +70,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/data/data.json
-          [ -f docs/data/probe.json ] && git add docs/data/probe.json || true
+          git add -A docs/data/ reports/
           if git diff --cached --quiet; then
             echo "변경 없음"
           else
