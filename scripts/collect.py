@@ -502,6 +502,8 @@ def parse_financials(rows: list[dict]) -> dict:
         financial = True
     if financial:
         f["financial"] = True
+    if rows and rows[0].get("rcept_no"):
+        f["rcept_no"] = rows[0]["rcept_no"]
     f["v"] = FIN_VER
     return f
 
@@ -1110,6 +1112,83 @@ def update_company_info(universe: dict) -> dict:
     return {cc: (cache.get(cc) or {}).get("info") for cc in universe}
 
 
+def ref_period(fin: dict) -> tuple[str, str]:
+    """비교 기준: 현재 재무의 직전 사업보고서"""
+    y = int(fin["period"][:4])
+    return (str(y - 1), "11011")
+
+
+def update_ref_assets(fins: dict) -> dict:
+    """단위 오류 확인용 — 직전 사업보고서 자산총계 (fnlttMultiAcnt, 1회 100개사). 결과는 법인·기간별 캐시."""
+    path = CACHE_DIR / "ref_assets.json"
+    cache = load_json(path, {})
+    need: dict[tuple, list] = {}
+    for cc, f in fins.items():
+        if f and f.get("assets") and not f.get("financial"):
+            y, r = ref_period(f)
+            if f"{cc}:{y}" not in cache:
+                need.setdefault((y, r), []).append(cc)
+    calls = 0
+    try:
+        for (y, r), ccs in need.items():
+            for i in range(0, len(ccs), 100):
+                batch = ccs[i:i + 100]
+                j = dart_get("fnlttMultiAcnt.json", corp_code=",".join(batch), bsns_year=y, reprt_code=r)
+                calls += 1
+                got: dict[str, dict] = {}
+                for row in j.get("list") or []:
+                    if norm(row.get("account_nm", "")) == "자산총계" and row.get("sj_div", "BS") == "BS":
+                        got.setdefault(row["corp_code"], {})[row.get("fs_div", "")] = to_int(row.get("thstrm_amount"))
+                for cc in batch:
+                    cache[f"{cc}:{y}"] = got.get(cc, {})
+                save_json(path, cache)
+    except (OutOfTime, DartError) as e:
+        warn(f"비교용 자산총계 조회 중단: {e}")
+    save_json(path, cache)
+    if calls:
+        log(f"비교용 자산총계 조회 {calls}회")
+    out = {}
+    for cc, f in fins.items():
+        if f and f.get("assets") and not f.get("financial"):
+            y, _ = ref_period(f)
+            ref = cache.get(f"{cc}:{y}") or {}
+            out[cc] = ref.get("CFS" if f.get("fs") == "연결" else "OFS") or ref.get("CFS") or ref.get("OFS")
+    return out
+
+
+def data_flags(f: dict, m: dict | None, ref_assets: int | None) -> list[dict]:
+    """재무 수치 이상 신호. level: 'error'(점수 제외) / 'warn'(확인 권장)"""
+    if not f:
+        return []
+    fl = []
+    a, li, b = f.get("assets") or 0, f.get("liabilities") or 0, f.get("borrowings") or 0
+    if not a:
+        fl.append({"code": "no_assets", "level": "error", "msg": "자산총계 0 또는 미기재 — 재무 미확보로 처리"})
+        return fl
+    if ref_assets and ref_assets > 0:
+        ratio = a / ref_assets
+        if ratio >= 30 or ratio <= 1 / 30:
+            fl.append({"code": "unit", "level": "error",
+                       "msg": f"단위 오류 의심 — 직전 사업보고서 자산총계 {eok(ref_assets)} 대비 {ratio:,.0f}배"
+                       if ratio >= 1 else f"단위 오류 의심 — 직전 사업보고서 자산총계 {eok(ref_assets)} 대비 1/{1 / ratio:,.0f}"})
+    if m and (m.get("cash_total") or 0) > a:
+        fl.append({"code": "cash_gt_assets", "level": "error", "msg": "현금성자산이 자산총계보다 큼 — 공시 수치 확인 필요"})
+    if b > li * 1.01:
+        fl.append({"code": "borrow_gt_liab", "level": "warn",
+                   "msg": f"차입금·사채({eok(b)})가 부채총계({eok(li)})보다 큼 — 계정 중복 합산 가능, 순현금 과소"})
+    if b == 0 and li / a >= 0.5:
+        fl.append({"code": "borrow_zero", "level": "warn",
+                   "msg": f"부채비율이 높은데(부채/자산 {li / a:.0%}) 차입금 0 — 계정명 미인식 가능, 순현금 과대"})
+    if li > a:
+        fl.append({"code": "impaired", "level": "warn", "msg": "부채총계가 자산총계보다 큼 (자본잠식)"})
+    if m and (m.get("cash_growth") or 0) > 5:
+        fl.append({"code": "cash_jump", "level": "warn",
+                   "msg": f"현금성자산 전기말 대비 {m['cash_growth'] + 1:,.0f}배 — 증자·매각 등 일회성 여부 확인"})
+    if not f.get("period", "").startswith(str(now_kst().year)):
+        fl.append({"code": "old", "level": "warn", "msg": f"재무 기준이 최신 아님 ({f.get('period')})"})
+    return fl
+
+
 # ───────────────────────── 점수·분류 ─────────────────────────
 def pct_rank(values: dict) -> dict:
     items = sorted(((k, v) for k, v in values.items() if v is not None), key=lambda x: x[1])
@@ -1121,7 +1200,7 @@ def eok(n) -> str:
     return "-" if n is None else f"{n / 1e8:,.0f}억"
 
 
-def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict]:
+def score_companies(universe: dict, fins: dict, events: list[dict], ref: dict | None = None) -> list[dict]:
     today = now_kst().date()
     sc = CFG["scoring"]
     w = sc["weights"]
@@ -1148,6 +1227,11 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
         growth = ((f["cash"] - f["cash_prev"]) / f["cash_prev"]
                   if f["cash"] is not None and f["cash_prev"] else None)
         metrics[cc] = {"cash_total": cash, "net_cash": net, "cash_ratio": ratio, "cash_growth": growth}
+    flags = {cc: data_flags(fins.get(cc), metrics.get(cc), (ref or {}).get(cc)) for cc in universe}
+    for cc, fl in flags.items():
+        if any(x["level"] == "error" for x in fl) and metrics.get(cc):
+            # 공시 수치 자체가 틀렸을 가능성이 큰 경우 → 순위 계산에서 제외 (값은 화면에 그대로 보여주고 '확인 필요' 표시)
+            metrics[cc] = {**metrics[cc], "net_cash": None, "cash_ratio": None, "cash_growth": None, "excluded": True}
 
     r_net = pct_rank({k: (m or {}).get("net_cash") for k, m in metrics.items()})
     r_ratio = pct_rank({k: (m or {}).get("cash_ratio") for k, m in metrics.items()})
@@ -1190,6 +1274,9 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
             f = fins[cc]
             points.append(f"금융회사 — {f.get('cash_label', '현금및현금성자산')} {eok(m['cash_total'])} "
                           f"(예수·차입이 영업 자체라 순현금·현금비중 지표 미적용, 공시로만 판단)")
+        elif m and m.get("excluded"):
+            msg = next(x["msg"] for x in flags[cc] if x["level"] == "error")
+            points.append(f"재무 공시 수치 확인 필요 — {msg} (여유자금 점수에서 재무 항목 제외)")
         elif m:
             f = fins[cc]
             line = f"순현금 {eok(m['net_cash'])} (현금성 {eok(m['cash_total'])} − 차입 {eok(f['borrowings'])})"
@@ -1215,6 +1302,7 @@ def score_companies(universe: dict, fins: dict, events: list[dict]) -> list[dict
             "last_event_date": evs[0]["date"] if evs else "",
             "points": points,
             "news": [],
+            **({"flags": flags[cc]} if flags.get(cc) else {}),
         })
     out.sort(key=lambda x: x["score"], reverse=True)
     return out
@@ -1431,7 +1519,8 @@ def main() -> int:
     infos = update_company_info(universe)
     fins = update_financials(universe, infos)
     contacts = update_details(events) if CFG.get("details", {}).get("enabled") else {}
-    companies = score_companies(universe, fins, events)
+    ref = update_ref_assets(fins)
+    companies = score_companies(universe, fins, events, ref)
     for c in companies:
         if (c.get("metrics") or {}).get("financial"):
             c["financial"] = True

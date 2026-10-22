@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="자금레이더">
+<meta name="apple-mobile-web-app-title" content="AI 레이더">
 <meta name="theme-color" content="#0f1b2d">
-<title>법인 자금 레이더</title>
+<title>법인WM AI 레이더</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
 :root{
@@ -183,6 +183,10 @@ tbody tr.click:hover{background:var(--surface-2)}
 .kv b{font-variant-numeric:tabular-nums}
 @media (max-width:520px){.kv{grid-template-columns:1fr}.kv div:nth-child(even){padding-left:0;border-left:0}.kv div:nth-child(odd){padding-right:0}}
 .points{margin:0;padding-left:18px}
+.chk{display:inline-block;font-size:10.5px;font-weight:600;color:var(--warn);background:var(--warn-bg);border-radius:4px;padding:0 5px;margin-left:5px;vertical-align:1px;cursor:help;white-space:nowrap}
+.flagbox{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 11px;font-size:12.5px;margin:0 0 10px}
+.flagbox ul{margin:4px 0 0;padding-left:17px}
+.flagbox a{color:inherit;text-decoration:underline}
 .rgroup{margin:4px 0 14px}
 .rgroup h3{font-size:13px;color:var(--ink-2);margin:0 0 8px}
 .rtiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
@@ -224,7 +228,7 @@ tbody tr.click:hover{background:var(--surface-2)}
 <body>
 <header>
   <div class="hd">
-    <div class="logo"><i></i>법인 자금 레이더</div>
+    <div class="logo"><i></i>법인WM AI 레이더</div>
     <span class="asof" id="asof"></span>
     <span class="grow"></span>
     <div class="search">
@@ -393,6 +397,10 @@ const evFull = e => {  // 상세: 금액 + 모든 일정 + 기타
   return items.length ? `<div class="evkv">${items.map(([k, v]) => `<span>${esc(k)}</span><b class="${/목적|사유|용도/.test(k) ? "wrapv" : ""}">${esc(v)}</b>`).join("")}</div>`
                       : `<div class="meta">원문에서 금액·일정을 찾지 못함 — DART 원문에서 확인</div>`;
 };
+// 재무 수치 이상 신호 → '확인필요' 표시 (마우스를 올리면 사유)
+const flagTxt = c => (c.flags || []).map(x => x.msg).join("\n");
+const chk = c => c.flags?.length ? `<span class="chk" title="${esc(flagTxt(c))}">${c.flags.some(x => x.level === "error") ? "수치 확인필요" : "확인필요"}</span>` : "";
+const rawNet = c => c.metrics ? (c.metrics.net_cash ?? (c.metrics.excluded && c.fin ? c.metrics.cash_total - (c.fin.borrowings || 0) : null)) : null;
 const SEG_LABEL = {short:"단기", mid:"중기", long:"장기", watch:"모니터링"};
 const segTag = s => `<span class="tag seg-${s}">${SEG_LABEL[s] || s}</span>`;
 const typeTag = t => `<span class="tag ${t === "유입" ? "in" : "out"}">${esc(t)}</span>`;
@@ -686,7 +694,7 @@ function renderScreen() {
       <td><b>${esc(c.name)}</b> ${c.watch ? '<span class="tag gray">관심</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}<div class="sub" style="margin:0">${esc(c.market_label)}${c.stock_code ? " · " + esc(c.stock_code) : ""}</div></td>
       <td class="num">${scoreCell(c.score)}</td><td>${segTag(c.segment)}</td>
       <td class="num">${eok(m?.cash_total)}</td>
-      <td class="num" style="color:${m && m.net_cash < 0 ? "var(--out)" : "inherit"}">${eok(m?.net_cash)}</td>
+      <td class="num" style="color:${rawNet(c) < 0 ? "var(--out)" : "inherit"}">${eok(rawNet(c))}${chk(c)}</td>
       <td class="num hide-m">${pct(m?.cash_ratio)}</td><td class="num hide-m">${pct(m?.cash_growth, 1)}</td>
       <td>${c.last_event_date ? dfmt(c.last_event_date) : "-"}</td>
       <td class="hide-m">${c.fin ? `${esc(c.fin.period)} ${esc(c.fin.fs)}` : '<span class="tag gray">미확보</span>'}</td></tr>`;
@@ -937,11 +945,12 @@ function openCompany(code) {
       <div class="card"><h3>영업 포인트</h3><ul class="points">${c.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>
       <div class="card"><h3>자금 성격 ${segTag(c.segment)} <span class="hz sub" style="font-weight:400">${esc(seg.horizon || "")}</span></h3>
         <div class="sub" style="margin:0">${esc(seg.condition || "")}</div></div>
-      <div class="card"><h3>재무 요약 ${f ? `<span class="sub" style="font-weight:400">${esc(f.period)} · ${esc(f.fs)} · 원문 확인 권장</span>` : ""}</h3>
+      <div class="card"><h3>재무 요약 ${f ? `<span class="sub" style="font-weight:400">${esc(f.period)} · ${esc(f.fs)}${f.rcept_no ? ` · <a href="https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${esc(f.rcept_no)}" target="_blank" rel="noopener">재무제표 원문 ↗</a>` : " · 원문 확인 권장"}</span>` : ""}</h3>
+        ${c.flags?.length ? `<div class="flagbox"><b>확인이 필요한 데이터</b>${c.metrics?.excluded ? " — 여유자금 점수에서 재무 항목 제외" : ""}<ul>${c.flags.map(x => `<li>${esc(x.msg)}</li>`).join("")}</ul></div>` : ""}
         ${f ? `<div class="kv">
           <div><span>${esc(f.cash_label || "현금및현금성자산")}</span><b>${eok(f.cash)}</b></div><div><span>단기금융상품</span><b>${eok(f.st_fin)}</b></div>
-          <div><span>차입금·사채 (근사)</span><b>${c.financial ? "금융업 미적용" : eok(f.borrowings)}</b></div><div><span>순현금</span><b style="color:${m.net_cash == null ? "inherit" : m.net_cash < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? "금융업 미적용" : eok(m.net_cash)}</b></div>
-          <div><span>자산총계</span><b>${eok(f.assets)}</b></div><div><span>현금/자산</span><b>${pct(m.cash_ratio)}</b></div>
+          <div><span>차입금·사채 (근사)</span><b>${c.financial ? "금융업 미적용" : eok(f.borrowings)}</b></div><div><span>순현금</span><b style="color:${rawNet(c) == null ? "inherit" : rawNet(c) < 0 ? "var(--out)" : "var(--in)"}">${c.financial ? "금융업 미적용" : eok(rawNet(c)) + chk(c)}</b></div>
+          <div><span>자산총계</span><b>${eok(f.assets)}</b></div><div><span>현금/자산</span><b>${pct(m.cash_ratio ?? (m.excluded && f.assets ? m.cash_total / f.assets : null))}</b></div>
           <div><span>현금 (전기말)</span><b>${eok(f.cash_prev)}</b></div><div><span>현금 증감</span><b>${pct(m.cash_growth, 1)}</b></div>
           <div><span>영업활동현금흐름</span><b>${eok(f.ocf)}</b></div><div><span>매출 (누적)</span><b>${eok(f.revenue)}</b></div>
         </div>` : `<div class="sub" style="margin:0">DART API에서 재무를 확보하지 못했습니다.</div>`}</div>
