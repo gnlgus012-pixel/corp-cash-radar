@@ -723,7 +723,10 @@ function renderScreen() {
     (!s.mkt || c.market === s.mkt) && (!s.seg || c.segment === s.seg) && c.score >= s.min &&
     (!s.fin || c.metrics) && (!s.watch || c.watch) && (!q || c.name.replace(/\s/g, "").includes(q)));
   const col = SC_COLS.find(x => x.k === s.sort);
+  const money = ["cash", "net", "ratio", "growth"].includes(s.sort);
   rows.sort((a, b) => {
+    // 단위 오류 의심 등 '수치 확인필요' 법인은 금액·비율 정렬에서 맨 뒤로 (잘못된 큰 숫자가 상위에 끼지 않도록)
+    if (money) { const ea = !!a.metrics?.excluded, eb = !!b.metrics?.excluded; if (ea !== eb) return ea ? 1 : -1; }
     const va = col.v(a), vb = col.v(b);
     if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
     return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * s.dir;
@@ -735,7 +738,7 @@ function renderScreen() {
     return `<tr class="click" data-co="${esc(c.corp_code)}">
       <td><b>${esc(c.name)}</b> ${c.watch ? '<span class="tag gray">관심</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}<div class="sub" style="margin:0">${esc(c.market_label)}${c.stock_code ? " · " + esc(c.stock_code) : ""}</div></td>
       <td class="num">${scoreCell(c.score)}</td><td>${segTag(c.segment)}</td>
-      <td class="num">${eok(m?.cash_total)}</td>
+      <td class="num">${eok(m?.cash_total)}${m?.excluded ? chk(c) : ""}</td>
       <td class="num" style="color:${rawNet(c) < 0 ? "var(--out)" : "inherit"}">${eok(rawNet(c))}${chk(c)}</td>
       <td class="num hide-m">${pct(m?.cash_ratio)}</td><td class="num hide-m">${pct(m?.cash_growth, 1)}</td>
       <td>${c.last_event_date ? dfmt(c.last_event_date) : "-"}</td>
