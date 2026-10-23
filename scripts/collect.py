@@ -1488,6 +1488,9 @@ def _walk_dicts(o):
             yield from _walk_dicts(v)
 
 
+BOND_DIAG = {"retry": 0, "status": Counter(), "sample": None, "no_data_reports": []}
+
+
 def enrich_bond_dates(events: list[dict]) -> None:
     """회사채(증권신고서-채무증권): DART 증권신고서 주요정보 API(bdRs)로 납입일·모집총액. 접수번호별 캐시."""
     path = CACHE_DIR / "bond.json"
@@ -1498,8 +1501,15 @@ def enrich_bond_dates(events: list[dict]) -> None:
             if e.get("category") != "회사채 발행" or e.get("detail"):
                 continue
             rn = e["rcept_no"]
-            if rn not in cache:
+            if rn not in cache or (not cache[rn] and BOND_DIAG["retry"] < 400):
+                BOND_DIAG["retry"] += 1
                 j = dart_get("bdRs.json", corp_code=e["corp_code"], bgn_de=e["date"], end_de=e["date"])
+                BOND_DIAG["status"][j.get("status", "?")] += 1
+                if not BOND_DIAG["sample"] and j.get("status") == "000":
+                    BOND_DIAG["sample"] = {"keys": sorted({k for d in _walk_dicts(j) for k in d})[:80],
+                                           "groups": [g.get("title") for g in j.get("group", []) if isinstance(g, dict)]}
+                if j.get("status") == "013":
+                    BOND_DIAG["no_data_reports"].append(e["report_nm"][:30]) if len(BOND_DIAG["no_data_reports"]) < 15 else None
                 rows = [d for d in _walk_dicts(j) if any(k in d for k in ("pymd", "sbd", "slta"))]
                 pick = [d for d in rows if d.get("rcept_no") == rn] or rows
                 info = {}
@@ -1617,7 +1627,7 @@ def main() -> int:
     contacts = update_details(events) if CFG.get("details", {}).get("enabled") else {}
     enrich_bond_dates(events)
     save_json(ROOT / "reports" / "dates_status.json", {"generated_at": now_kst().isoformat(timespec="minutes"),
-                                                      "by_category": dates_status(events)})
+                                                      "by_category": dates_status(events), "bond_diag": BOND_DIAG})
     ref = update_ref_assets(fins)
     companies = score_companies(universe, fins, events, ref)
     for c in companies:
