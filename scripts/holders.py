@@ -110,6 +110,28 @@ def is_person(name: str) -> bool:
     return not any(core.endswith(x) and len(core) - len(x) >= 2 for x in ORG_SUFFIX)
 
 
+def tax_deadline(d: str, months: int) -> str:
+    """신고·납부기한: 거래일이 속한 달의 말일부터 N개월 (그 달 말일)"""
+    x = date.fromisoformat(d)
+    y, m = x.year, x.month + months
+    y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+    nxt = date(y + (m == 12), m % 12 + 1, 1)
+    return (nxt - timedelta(days=1)).isoformat()
+
+
+def cash_date(cause: str, d: str) -> tuple[str, str]:
+    """변동 사유별 실제 자금 일자와 그 의미"""
+    if INHERIT_RX.search(cause):
+        return tax_deadline(d, 6), "상속세 신고·납부기한"
+    if GIFT_OUT_RX.search(cause) or "수증" in cause:
+        return tax_deadline(d, 3), "증여세 신고·납부기한"
+    if re.search(r"장내|시간외|블록딜", cause):
+        # 장내·시간외 매매는 공시의 변경일이 체결일이 아니라 결제일(T+2) 기준
+        # (공시일보다 변경일이 늦은 신고가 있음 — 체결 후 결제 전에 신고한 경우)
+        return d, "매도대금 결제일"
+    return d, "거래일 (장외: 대금일은 계약에 따름)"
+
+
 def base(nm: str) -> str:
     return re.sub(r"\s+", "", re.sub(r"^\[[^\]]*\]", "", nm.strip()))
 
@@ -470,10 +492,11 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
                             missing = True
                         else:
                             amt += abs(c["delta"] or 0) * px
-                    dates = sorted(c["date"] for c in chs)
+                    cds = sorted(cash_date(c["cause"], c["date"]) for c in chs)
                     it.update({"person": person["name"], "relation": person["relation"], "shares": sh,
                                "amount": None if missing and not amt else amt, "est": True,
-                               "event_date": dates[-1], "date_from": dates[0],
+                               "event_date": cds[-1][0], "date_from": cds[0][0], "date_kind": cds[-1][1],
+                               "trade_date": max(c["date"] for c in chs),
                                "how": ", ".join(sorted({re.sub(r"\s*\([+-]\)", "", c["cause"]) for c in chs})),
                                "note": "변동일 종가 × 주식수 추정" + (" (일부 종가 없음)" if missing and amt else "")})
                     items.append(it)
@@ -489,7 +512,8 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
                 px = g["price"] if g.get("price") and g["price"] > 0 else close_on(prices, it["stock_code"], ymd_dash(d["date"]) or g["start"], today)
                 it.update({"person": p["name"], "relation": " · ".join(x for x in (p["position"], p["major"]) if x and x != "-"),
                            "shares": sh, "amount": (abs(g["amount"]) if g.get("amount") else (sh * px if px and sh else None)),
-                           "est": not g.get("amount"), "event_date": g["start"],
+                           "est": not g.get("amount"), "event_date": tax_deadline(g["start"], 3),
+                           "date_kind": "증여세 신고·납부기한 (증여 예정일 " + g["start"] + ")",
                            "how": "증여 예정 (거래계획보고서)",
                            "note": "예정일 " + g["start"] + (" · 목적: " + p["purpose"] if p.get("purpose") and p["purpose"] != "-" else "")})
                 items.append(it)
@@ -503,6 +527,7 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
             it.update({"person": p["name"], "relation": " · ".join(x for x in (p["position"], p["major"]) if x and x != "-"),
                        "shares": sum(abs(x["shares"] or 0) for x in sells), "amount": sum(abs(x["amount"] or 0) for x in sells) or None,
                        "est": False, "event_date": min(x["start"] for x in sells), "date_to": max((x["end"] or x["start"]) for x in sells),
+                       "date_kind": "매도대금 결제 기간 (거래계획보고서의 결제일)",
                        "how": ", ".join(sorted({re.sub(r"\s*\([+-]\)", "", x["method"]) for x in sells})),
                        "note": ("거래 예정 기간 " + min(x["start"] for x in sells) + " ~ " + max((x["end"] or x["start"]) for x in sells)
                                 + (" · 목적: " + p["purpose"] if p.get("purpose") and p["purpose"] != "-" else "")),
@@ -530,6 +555,7 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
                            "shares": sum(c["shares"] or 0 for c in new),
                            "amount": (p.get("debt_total") if single and p.get("debt_total") else (sum(c["amount"] or 0 for c in cts) or None)),
                            "est": False, "event_date": p.get("contract_date") or ymd_dash(d["date"]),
+                           "date_kind": "담보계약 체결일 (대출 실행 시점)" + ("" if p.get("contract_date") else " — 미기재로 공시일"),
                            "how": ", ".join(sorted({c["lender"] for c in new if c.get("lender")})),
                            "debt_total": p.get("debt_total"), "maturity": ends[0] if ends else None,
                            "amount_label": "차입 총액" if single and p.get("debt_total") else "담보설정액",
@@ -548,6 +574,7 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
                 amt = round(sh * p["price"]) if p.get("price") and sh else (p["amount"] if len(sellers) == 1 else None)
                 it.update({"person": s["name"], "relation": s["relation"], "shares": sh, "amount": amt, "est": False,
                            "event_date": p.get("close_date") or p.get("contract_date") or d["date"],
+                           "date_kind": "잔금 지급일 (최대주주 변경 예정일)" if p.get("close_date") else "계약일 (잔금일 미기재)",
                            "how": "양수인 " + (p.get("buyer") or "-"),
                            "note": (f"계약 전체 {C.eok(p['amount'])}" if p.get("amount") else "")
                                    + (f" · 대금 지급(변경 예정)일 {p['close_date']}" if p.get("close_date") else "")})
@@ -634,7 +661,9 @@ def dividend_items(data: dict, today: date) -> list[dict]:
             out.append({"id": f"{e['rcept_no']}-d-{r['nm']}", "cat": "배당 수령", "rcept_no": e["rcept_no"],
                         "date": e["date"], "corp_code": cc, "corp_name": e["corp_name"], "stock_code": e.get("stock_code", ""),
                         "corp_cls": e.get("corp_cls", ""), "person": r["nm"], "relation": r["relate"], "shares": qty,
-                        "amount": amt, "est": True, "event_date": dates.get("지급예정일") or dates.get("기준일") or f"{e['date'][:4]}-{e['date'][4:6]}-{e['date'][6:]}",
+                        "amount": amt, "est": True,
+                        "event_date": dates.get("지급예정일") or dates.get("지급예정일(추정)") or C.est_dividend_pay(e) or dates.get("기준일"),
+                        "date_kind": "배당 지급예정일" if dates.get("지급예정일") else "배당 지급일 (추정: 공시에 지급일 없음)",
                         "how": f"주당 {dps:,}원", "note": f"{used_year}년 사업보고서 기준 보유 {qty:,}주 ({r['rt']}%) × 주당 {dps:,}원 추정" + fix})
     C.save_json(HYSLR_PATH, hy)
     return out

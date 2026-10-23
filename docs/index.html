@@ -507,9 +507,9 @@ const whyCode = c => !c.fin ? "nofin" : c.financial ? "fin" : (c.flags || []).so
 const why = (c, cls = "chk") => { const w = WHY[whyCode(c)]; return w ? `<span class="${cls}" title="${esc(w[1])}">${w[0]}</span>` : ""; };
 const rawNet = c => c.metrics ? (c.metrics.net_cash ?? (c.metrics.excluded && c.fin ? c.metrics.cash_total - (c.fin.borrowings || 0) : null)) : null;
 // 자금 일정 종류 (원문 일정 이름 → 필터 표시명)
-const SCHED_KIND = {"납입일": "납입일", "양수예정일": "양수·취득 예정일", "양도예정일": "양도·처분 예정일", "지급예정일": "배당 지급예정일",
+const SCHED_KIND = {"납입일": "납입일", "양수예정일": "양수·취득 예정일", "양도예정일": "양도·처분 예정일", "지급예정일": "배당 지급예정일", "지급예정일(추정)": "배당 지급일(추정)",
   "기간 시작": "자사주 매매 시작일", "투자 시작": "시설투자 시작일", "매도일": "자기사채 매도대금 수령일", "취득일": "사채 조기취득 지급일",
-  "대여 시작": "금전대여 시작일", "상환일": "차입금 상환일", "차입일": "차입일"};
+  "대여 시작": "금전대여 시작일", "상환일": "차입금 상환일", "상환일(결의일)": "차입금 상환일(이사회결의일 기준)", "차입일": "차입일", "차입일(결의일)": "차입일(이사회결의일 기준)"};
 const schedOf = (e, kind) => (e.detail?.dates || []).filter(([k]) => (kind ? k === kind : k in SCHED_KIND));
 const SEG_LABEL = {short:"단기", mid:"중기", long:"장기", watch:"모니터링"};
 const segTag = s => `<span class="tag seg-${s}">${SEG_LABEL[s] || s}</span>`;
@@ -922,7 +922,7 @@ const OW_COLS = {
   person: {l: "대주주 (관계)", v: i => i.person, def: 1},
   shares: {l: "주식수", v: i => i.shares || null, def: -1},
   amount: {l: "금액", v: i => i.amount || null, def: -1},
-  when: {l: "자금 일자", v: i => i.event_date ? isoDate(i.event_date) : null, def: -1},
+  when: {l: "자금 일자", v: i => i.event_date ? isoDate(i.event_date) : null, def: -1, tip: "실제 돈이 오가는 날: 매도대금 결제일·잔금 지급일·배당 지급일·대출 실행일 / 증여·상속은 세금 납부기한"},
 };
 function initOwner() {
   const H = D.holders;
@@ -974,7 +974,7 @@ function renderOwner() {
   });
   $("#ow-sort").value = o.sort;
   $("#ow-dir").textContent = o.dir > 0 ? "↑ 오름차순" : "↓ 내림차순";
-  const th = (k, cls = "") => `<th class="sort ${cls} ${o.sort === k ? (o.dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${OW_COLS[k].l}</th>`;
+  const th = (k, cls = "") => `<th class="sort ${cls} ${o.sort === k ? (o.dir > 0 ? "asc" : "desc") : ""}" data-k="${k}"${OW_COLS[k].tip ? ` title="${esc(OW_COLS[k].tip)}"` : ""}>${OW_COLS[k].l}</th>`;
   const LIMIT = 400;
   $("#ow-count").textContent = `${rows.length.toLocaleString()}건${rows.length > LIMIT ? ` (상위 ${LIMIT}건 표시)` : ""}`;
   $("#owTable").innerHTML = `<thead><tr>${th("date")}${th("cat")}${th("name")}${th("person")}${th("shares", "num")}${th("amount", "num")}${th("when")}<th>내용</th></tr></thead><tbody>${
@@ -989,7 +989,7 @@ function renderOwner() {
         <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "-")}</div></td>
         <td class="num">${i.shares ? i.shares.toLocaleString() : "-"}</td>
         <td class="num">${amt}</td>
-        <td>${i.event_date ? esc(i.event_date.replaceAll("-", ".")) + (i.date_to && i.date_to !== i.event_date ? `<div class="meta">~ ${esc(i.date_to.replaceAll("-", "."))}</div>` : "") : "-"}</td>
+        <td>${i.event_date ? esc(i.event_date.replaceAll("-", ".")) + (i.date_to && i.date_to !== i.event_date ? `<div class="meta">~ ${esc(i.date_to.replaceAll("-", "."))}</div>` : "") + (i.date_kind ? `<div class="meta">${esc(i.date_kind)}</div>` : "") : "-"}</td>
         <td class="wrap">${esc(i.how || "")}${i.note ? `<div class="meta" title="${esc(i.note)}">${esc(i.note.length > 70 ? i.note.slice(0, 70) + "…" : i.note)}</div>` : ""} ${DART_LINK(i, "원문")}</td></tr>`;
     }).join("") || `<tr><td colspan="8" class="empty">조건에 맞는 공시가 없습니다.</td></tr>`}</tbody>`;
   $$("#owTable th.sort").forEach(h => h.onclick = () => {

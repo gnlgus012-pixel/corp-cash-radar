@@ -23,6 +23,7 @@ import sys
 import time
 import zipfile
 import xml.etree.ElementTree as ET
+from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -1477,12 +1478,105 @@ def fetch_rates() -> list[dict]:
     return out
 
 
+def _walk_dicts(o):
+    if isinstance(o, dict):
+        yield o
+        for v in o.values():
+            yield from _walk_dicts(v)
+    elif isinstance(o, list):
+        for v in o:
+            yield from _walk_dicts(v)
+
+
+def enrich_bond_dates(events: list[dict]) -> None:
+    """회사채(증권신고서-채무증권): DART 증권신고서 주요정보 API(bdRs)로 납입일·모집총액. 접수번호별 캐시."""
+    path = CACHE_DIR / "bond.json"
+    cache = load_json(path, {})
+    got = miss = 0
+    try:
+        for e in events:
+            if e.get("category") != "회사채 발행" or e.get("detail"):
+                continue
+            rn = e["rcept_no"]
+            if rn not in cache:
+                j = dart_get("bdRs.json", corp_code=e["corp_code"], bgn_de=e["date"], end_de=e["date"])
+                rows = [d for d in _walk_dicts(j) if any(k in d for k in ("pymd", "sbd", "slta"))]
+                pick = [d for d in rows if d.get("rcept_no") == rn] or rows
+                info = {}
+                for d in pick:
+                    for k in ("pymd", "sbd", "slta", "rpd", "bdnmn"):
+                        if d.get(k) and k not in info:
+                            info[k] = d[k]
+                cache[rn] = info
+            info = cache[rn]
+            pay = parse_date(info.get("pymd", "")) or (info.get("pymd") if re.fullmatch(r"\d{4}-\d{2}-\d{2}", info.get("pymd", "")) else None)
+            if not pay and re.fullmatch(r"\d{8}", info.get("pymd", "")):
+                pay = f"{info['pymd'][:4]}-{info['pymd'][4:6]}-{info['pymd'][6:]}"
+            if not pay:
+                miss += 1
+                continue
+            got += 1
+            e["detail"] = {"amount": to_int(info.get("slta")), "amount_label": "발행", "dates": [["납입일", pay]], "texts": []}
+            if info.get("rpd"):
+                rp = parse_date(info["rpd"])
+                if rp:
+                    e["detail"]["dates"].append(["만기일", rp])
+    except (OutOfTime, DartError) as ex:
+        warn(f"회사채 납입일 조회 중단 ({ex.__class__.__name__}) — 다음 실행에서 이어서")
+    save_json(path, cache)
+    STATS["bond_dates"] = {"납입일": got, "없음": miss}
+    log(f"회사채 납입일 {got}건 확보, {miss}건 없음")
+
+
+def dates_status(events: list[dict]) -> dict:
+    """유형별 '실제 자금 일자' 확보 현황 (공개 저장소용 — 건수만)"""
+    cash = ("납입일", "지급예정일", "지급예정일(추정)", "양수예정일", "양도예정일", "기간 시작", "투자 시작", "매도일",
+            "취득일", "대여 시작", "상환일", "상환일(결의일)", "차입일", "차입일(결의일)")
+    out = {}
+    for e in events:
+        det = e.get("detail") or {}
+        if det.get("old") or det.get("dup"):
+            continue
+        o = out.setdefault(e["category"], {"n": 0, "with_date": 0, "kinds": Counter()})
+        o["n"] += 1
+        ks = [k for k, v in (det.get("dates") or []) if v and k in cash]
+        pay = est_dividend_pay(e)
+        if pay:
+            ks.append("지급예정일(추정)")
+        if ks:
+            o["with_date"] += 1
+        for k in set(ks):
+            o["kinds"][k] += 1
+    return out
+
+
+def est_dividend_pay(e: dict) -> str | None:
+    """배당 지급예정일이 공시에 없을 때 추정 (최근 1년 공시에서 지급예정일이 있는 건의 실제 간격 기준)
+    - 기준일이 12월 말인 결산배당(주총 후 지급): 기준일 + 110일 (중앙값, 대부분 4월 중순~하순)
+    - 그 밖(분기·중간배당, 주총 후 기준일을 정하는 새 방식): 기준일 + 21일 (중앙값)"""
+    if e.get("category") != "배당":
+        return None
+    dt = dict((e.get("detail") or {}).get("dates") or [])
+    if dt.get("지급예정일") or not dt.get("기준일"):
+        return None
+    try:
+        b = date.fromisoformat(dt["기준일"])
+    except ValueError:
+        return None
+    interim = any(x in e.get("report_nm", "") for x in ("분기", "중간"))
+    days = 110 if (b.month == 12 and b.day >= 28 and not interim) else 21
+    return (b + timedelta(days=days)).isoformat()
+
+
 def slim_event(e: dict) -> dict:
     """화면용 출력에서 반복·기본값 필드 제거 (링크는 접수번호로, 안내문구는 meta.hints 로 화면에서 복원)"""
     o = {k: v for k, v in e.items() if k not in ("url", "hint") and not (k == "correction" and not v)}
     if "detail" in o:
         o["detail"] = {k: v for k, v in o["detail"].items()
                        if k not in ("v", "chain_checked", "contact") and v not in (None, False, [], "")}
+        pay = est_dividend_pay(e)
+        if pay:  # 화면의 '자금 일정'에서 실제 지급일 대신 쓰는 추정치 (표시에 '추정' 명시)
+            o["detail"]["dates"] = list(o["detail"].get("dates") or []) + [["지급예정일(추정)", pay]]
     return o
 
 
@@ -1521,6 +1615,9 @@ def main() -> int:
     infos = update_company_info(universe)
     fins = update_financials(universe, infos)
     contacts = update_details(events) if CFG.get("details", {}).get("enabled") else {}
+    enrich_bond_dates(events)
+    save_json(ROOT / "reports" / "dates_status.json", {"generated_at": now_kst().isoformat(timespec="minutes"),
+                                                      "by_category": dates_status(events)})
     ref = update_ref_assets(fins)
     companies = score_companies(universe, fins, events, ref)
     for c in companies:
