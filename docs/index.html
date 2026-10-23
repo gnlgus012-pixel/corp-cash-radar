@@ -249,9 +249,10 @@ tbody tr.click:hover{background:var(--surface-2)}
 .notice h2{margin:0 0 12px;font-size:17px}
 .notice .ent{border-top:1px solid var(--line);padding:12px 0}
 .notice .ent:first-of-type{border-top:0;padding-top:0}
-.notice .ent b{font-size:14px}
-.notice .ent .d{font-size:12px;color:var(--ink-3);margin-left:6px}
-.notice .ent.new b::after{content:"NEW";font-size:10px;font-weight:700;color:#fff;background:var(--out);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:2px}
+.notice .ent .nd b{font-size:14.5px}
+.notice .ent .sec{margin-top:8px}
+.notice .ent .st{font-size:13.5px;font-weight:600;color:var(--ink)}
+.notice .ent.new .nd b::after{content:"NEW";font-size:10px;font-weight:700;color:#fff;background:var(--out);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:2px}
 .notice ul{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--ink-2);line-height:1.6}
 .notice .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 .notice .ft button{padding:8px 16px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);cursor:pointer;font-size:14px}
@@ -273,9 +274,9 @@ tbody tr.click:hover{background:var(--surface-2)}
   </form>
 </div>
 <div class="notice" id="notice" hidden><div class="box">
-  <h2>업데이트 소식</h2>
+  <h2>업데이트 소식 <span style="font-size:12px;font-weight:400;color:var(--ink-3)">최근 1주일</span></h2>
   <div id="noticeBody"></div>
-  <div class="ft"><button class="pri" id="noticeOk">확인</button></div>
+  <div class="ft"><button id="noticeToday">오늘 하루 보지 않기</button><button class="pri" id="noticeOk">확인</button></div>
 </div></div>
 <header>
   <div class="hd">
@@ -627,28 +628,35 @@ function logVisit() {
   } catch(e) {}
 }
 /* 업데이트 공지: docs/notices.json 의 최신 항목을 처음 한 번 띄움 (확인하면 다음부터 안 뜸) */
-const NOTICE_SEEN = "radar-notice-seen";
+const NOTICE_SEEN = "radar-notice-seen", NOTICE_SKIP = "radar-notice-skip";
 async function showNotices(force) {
   let list = [];
   try { const r = await fetch(`notices.json?t=${Date.now()}`, {cache: "no-store"}); if (r.ok) list = (await r.json()).notices || []; } catch(e) {}
-  // 게시일(date)로부터 7일이 지난 공지는 띄우지도, 목록에 보여주지도 않음
+  // 최근 7일 공지만 (게시일 기준). 접속할 때마다 띄우되 '오늘 하루 보지 않기'를 누르면 그날은 생략
   const cut = new Date(); cut.setHours(0, 0, 0, 0); cut.setDate(cut.getDate() - 7);
   list = list.filter(n => { const d = new Date(String(n.date).replace(/\./g, "-")); return !isNaN(d) && d >= cut; });
+  const close = () => { $("#notice").hidden = true; };
   if (!list.length) {
     if (force) { $("#noticeBody").innerHTML = `<div class="empty">최근 1주일 동안 올라온 공지가 없습니다.</div>`; $("#notice").hidden = false;
-                 $("#noticeOk").onclick = () => { $("#notice").hidden = true; }; }
+                 $("#noticeOk").onclick = close; $("#noticeToday").hidden = true; }
     return;
   }
+  let skip = "", seen = "";
+  try { skip = localStorage.getItem(NOTICE_SKIP) || ""; seen = localStorage.getItem(NOTICE_SEEN) || ""; } catch(e) {}
+  if (!force && skip === todayIso()) return;
   list.sort((a, b) => String(b.id).localeCompare(String(a.id)));
-  let seen = "";
-  try { seen = localStorage.getItem(NOTICE_SEEN) || ""; } catch(e) {}
-  const fresh = list.filter(n => n.id > seen);
-  if (!force && !fresh.length) return;
-  const show = force ? list.slice(0, 6) : fresh;
-  $("#noticeBody").innerHTML = show.map(n => `<div class="ent${n.id > seen ? " new" : ""}"><b>${esc(n.title)}</b><span class="d">${esc(n.date)}</span>
-    <ul>${(n.items || []).map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>`).join("");
+  // 같은 날짜끼리 묶기
+  const byDate = [];
+  list.forEach(n => { let g = byDate.find(x => x.date === n.date); if (!g) byDate.push(g = {date: n.date, list: []}); g.list.push(n); });
+  $("#noticeBody").innerHTML = byDate.map(g => `<div class="ent${g.list.some(n => n.id > seen) ? " new" : ""}">
+    <div class="nd"><b>${esc(g.date)} 업데이트</b></div>
+    ${g.list.map(n => `<div class="sec"><div class="st">${esc(n.title)}</div><ul>${(n.items || []).map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>`).join("")}
+  </div>`).join("");
   $("#notice").hidden = false;
-  $("#noticeOk").onclick = () => { try { localStorage.setItem(NOTICE_SEEN, list[0].id); } catch(e) {} $("#notice").hidden = true; };
+  $("#noticeToday").hidden = false;
+  const markSeen = () => { try { localStorage.setItem(NOTICE_SEEN, list[0].id); } catch(e) {} };
+  $("#noticeOk").onclick = () => { markSeen(); close(); };
+  $("#noticeToday").onclick = () => { markSeen(); try { localStorage.setItem(NOTICE_SKIP, todayIso()); } catch(e) {} close(); };
 }
 window.showNotices = showNotices;
 window.radarLock = () => { try { localStorage.removeItem(KEY_STORE); } catch(e) {} location.reload(); };
