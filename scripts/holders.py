@@ -531,6 +531,8 @@ def dividend_items(data: dict, today: date) -> list[dict]:
     evs = [e for e in data.get("events", []) if e.get("category") == "배당" and e.get("corp_cls") in ("Y", "K")]
     for e in sorted(evs, key=lambda x: x["date"], reverse=True):
         det = e.get("detail") or {}
+        if det.get("superseded_by") or det.get("old") or det.get("dup"):  # 이후 정정된 공시·과거분 정정은 제외
+            continue
         dps = next((t[1] for t in det.get("texts", []) if t[0] == "주당배당금"), None)
         if not isinstance(dps, (int, float)) or dps <= 0:
             continue
