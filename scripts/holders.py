@@ -59,18 +59,51 @@ CORP_WORDS = ("(주)", "㈜", "주식회사", "조합", "투자", "펀드", "재
               "외 ", "외1", "외2", "외3", "외4", "외5", "회사", "그룹", "협회", "학교", "농협", "보험", "글로벌", "인베스트")
 
 
+SURNAMES = set("김이박최정강조윤장임한오서신권황안송류유전홍고문양손배백허남심노하곽성차주우구민나진지엄채원천방공현함변염여추도소석선설마길연위표명기반라왕금옥육인맹제모탁국어은편용예경봉사부가복태목형피두감음빈동온호범좌팽승간상시갈단견당화창궉계탄묵근미요")
+COMPOUND = ("남궁", "황보", "제갈", "선우", "독고", "사공", "서문", "동방", "어금")
+ORG_SUFFIX = ("생명", "물산", "화재", "전자", "자동차", "건설", "은행", "금융", "증권", "공단", "재단", "정부", "공사", "산업", "제약",
+              "화학", "지주", "기업", "상사", "통신", "에너지", "개발", "카드", "해운", "항공", "철강", "제철", "중공업", "전기", "엔지니어링",
+              "시스템", "테크", "바이오", "미디어", "문화", "장학회", "복지회", "학원", "병원", "교회", "연금", "기금", "협회", "중앙회", "재정부",
+              "센터", "학교", "대학교", "산학협력단", "운용", "자산", "파트너스", "벤처스",
+              "캐피탈", "인베스트", "홀딩스", "글로벌", "코리아", "인터내셔널", "엔터", "모터스", "건업", "실업", "물류", "상선", "흥업")
+
+
+ORG_EXACT = {"정부", "국세청", "조달청", "국방부", "교육부", "대한민국", "국가", "본인", "기타", "합계", "소계"}
+_CORP_NAMES: set | None = None
+
+
+def corp_names() -> set:
+    """DART 등록 회사명 (한화·기아처럼 짧은 회사명이 사람 이름으로 오인되지 않게)"""
+    global _CORP_NAMES
+    if _CORP_NAMES is None:
+        m = C.load_json(C.CACHE_DIR / "corpcode.json", {}).get("map", {})
+        _CORP_NAMES = {re.sub(r"\s+|\(주\)|㈜|주식회사", "", v.get("name", "")) for v in m.values()}
+        _CORP_NAMES.discard("")
+    return _CORP_NAMES
+
+
 def is_person(name: str) -> bool:
+    """개인 이름인지 (공시에 개인/법인 구분이 없는 표에서 사용). 한국 성씨로 시작하는 2~4자(복성은 5자) + 기관·회사형 어미 제외"""
     n = (name or "").strip()
     if not n or n in ("-",):
         return False
     up = n.upper()
     if any(w.upper() in up for w in CORP_WORDS):
         return False
-    core = re.sub(r"\s+", "", re.sub(r"\(.*?\)", "", n))
-    if re.fullmatch(r"[가-힣]{2,5}", core):
-        return True
     m = re.search(r"\(([가-힣\s]{2,6})\)", n)  # HUR JULIE(허승원) 같은 표기
-    return bool(m)
+    core = re.sub(r"\s+", "", re.sub(r"\(.*?\)", "", n))
+    if not re.fullmatch(r"[가-힣]{2,5}", core):
+        return bool(m) and is_person(m.group(1))
+    if len(core) == 5 or (len(core) == 4 and core[:2] in COMPOUND):
+        if core[:2] not in COMPOUND:
+            return False
+    elif core[0] not in SURNAMES:
+        return False
+    if len(core) >= 4 and core[:2] not in COMPOUND:
+        return False  # 4자 이름은 거의 없고 '삼성생명' 같은 기관명이 대부분
+    if core in ORG_EXACT or core in corp_names():
+        return False
+    return not any(core.endswith(x) and len(core) - len(x) >= 2 for x in ORG_SUFFIX)
 
 
 def base(nm: str) -> str:
@@ -567,6 +600,8 @@ def dividend_items(data: dict, today: date) -> list[dict]:
         for r in rows:
             if "보통" not in r["kind"] or not r["qty"] or not is_person(r["nm"]) or r["nm"] in ("계", "합계"):
                 continue
+            if re.search(r"계열|법인|관계회사|재단|조합|펀드|공익|자회사|모회사", r.get("relate", "")):
+                continue  # 관계가 회사·재단인 행
             qty, fix = r["qty"], ""
             try:
                 rt = float(str(r["rt"]).replace(",", ""))
