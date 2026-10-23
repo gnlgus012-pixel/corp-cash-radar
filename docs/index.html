@@ -380,7 +380,8 @@ tbody tr.click:hover{background:var(--surface-2)}
       <select id="ow-min"><option value="0">모든 금액</option><option value="100000000" selected>1억 이상</option><option value="1000000000">10억 이상</option><option value="10000000000">100억 이상</option></select>
       <select id="ow-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
       <input type="text" id="ow-q" placeholder="법인명·이름">
-      <label>정렬 <select id="ow-sort"><option value="date">공시일</option><option value="when">자금 일자</option><option value="amount">금액</option><option value="name">법인명</option></select></label>
+      <label>정렬 <select id="ow-sort"><option value="date">공시일</option><option value="cat">유형</option><option value="name">법인명</option><option value="person">대주주</option><option value="shares">주식수</option><option value="amount">금액</option><option value="when">자금 일자</option></select></label>
+      <button class="dirbtn" id="ow-dir" title="오름차순/내림차순 전환">↓ 내림차순</button>
       <span class="count" id="ow-count"></span>
     </div>
     <div class="tw"><table id="owTable"></table></div>
@@ -519,7 +520,7 @@ const st = {
   ev: {period: 30, type: "", cat: "", mkt: "", q: "", sort: "date", dir: -1, basis: "disc", srange: "n30", skind: ""},
   sc: {mkt: "", seg: "", min: 0, fin: false, watch: false, q: "", sort: "score", dir: -1},
   topic: 0,
-  ow: {period: 30, cat: "", min: 1e8, mkt: "", q: "", sort: "date"},
+  ow: {period: 30, cat: "", min: 1e8, mkt: "", q: "", sort: "date", dir: -1},
 };
 
 /* ── 테마 ── */
@@ -630,7 +631,14 @@ const NOTICE_SEEN = "radar-notice-seen";
 async function showNotices(force) {
   let list = [];
   try { const r = await fetch(`notices.json?t=${Date.now()}`, {cache: "no-store"}); if (r.ok) list = (await r.json()).notices || []; } catch(e) {}
-  if (!list.length) return;
+  // 게시일(date)로부터 7일이 지난 공지는 띄우지도, 목록에 보여주지도 않음
+  const cut = new Date(); cut.setHours(0, 0, 0, 0); cut.setDate(cut.getDate() - 7);
+  list = list.filter(n => { const d = new Date(String(n.date).replace(/\./g, "-")); return !isNaN(d) && d >= cut; });
+  if (!list.length) {
+    if (force) { $("#noticeBody").innerHTML = `<div class="empty">최근 1주일 동안 올라온 공지가 없습니다.</div>`; $("#notice").hidden = false;
+                 $("#noticeOk").onclick = () => { $("#notice").hidden = true; }; }
+    return;
+  }
   list.sort((a, b) => String(b.id).localeCompare(String(a.id)));
   let seen = "";
   try { seen = localStorage.getItem(NOTICE_SEEN) || ""; } catch(e) {}
@@ -898,6 +906,16 @@ function drawFlowChart() {
 const OW_KIND = {"지분 매각": "cash", "매도 계획": "cash", "경영권 양도": "cash", "배당 수령": "cash", "증여·상속": "tax", "주식담보": "loan"};
 const OW_HINT = {cash: "현금 유입", tax: "세금 납부 자금 수요", loan: "차입·담보 — 대환·만기 관리 수요"};
 const isoDate = s => s ? s.replaceAll("-", "") : "";
+// 열 머리 클릭 정렬 (def: 처음 눌렀을 때 방향, -1 내림차순)
+const OW_COLS = {
+  date: {l: "공시일", v: i => i.date, def: -1},
+  cat: {l: "유형", v: i => i.cat, def: 1},
+  name: {l: "법인", v: i => i.corp_name, def: 1},
+  person: {l: "대주주 (관계)", v: i => i.person, def: 1},
+  shares: {l: "주식수", v: i => i.shares || null, def: -1},
+  amount: {l: "금액", v: i => i.amount || null, def: -1},
+  when: {l: "자금 일자", v: i => i.event_date ? isoDate(i.event_date) : null, def: -1},
+};
 function initOwner() {
   const H = D.holders;
   if (!H) {
@@ -912,7 +930,8 @@ function initOwner() {
   $("#ow-min").onchange = e => { o.min = +e.target.value; renderOwner(); };
   $("#ow-mkt").onchange = e => { o.mkt = e.target.value; renderOwner(); };
   $("#ow-q").oninput = e => { o.q = e.target.value.replace(/\s/g, ""); renderOwner(); };
-  $("#ow-sort").onchange = e => { o.sort = e.target.value; renderOwner(); };
+  $("#ow-sort").onchange = e => { o.sort = e.target.value; o.dir = OW_COLS[o.sort].def; renderOwner(); };
+  $("#ow-dir").onclick = () => { o.dir *= -1; renderOwner(); };
   const today = todayIso(), d30 = daysAgo(30);
   const live = H.items.filter(i => !i.cancelled);
   const sum = arr => arr.reduce((a, i) => a + (i.amount || 0), 0);
@@ -939,11 +958,18 @@ function renderOwner() {
     i.date >= from && (!o.cat || i.cat === o.cat) && (!o.mkt || i.corp_cls === o.mkt) &&
     (o.min === 0 || (i.amount || 0) >= o.min) &&
     (!o.q || (i.corp_name + i.person).replace(/\s/g, "").includes(o.q)));
-  const key = {date: i => i.date, when: i => isoDate(i.event_date), amount: i => i.amount || 0, name: i => i.corp_name}[o.sort];
-  rows.sort((a, b) => o.sort === "name" ? key(a).localeCompare(key(b), "ko") : (key(b) > key(a) ? 1 : key(b) < key(a) ? -1 : 0));
+  const sv = OW_COLS[o.sort].v;
+  rows.sort((a, b) => {  // 값 없는 행은 방향과 관계없이 맨 뒤
+    const va = sv(a), vb = sv(b);
+    if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+    return (typeof va === "string" ? va.localeCompare(vb, "ko") : va - vb) * o.dir;
+  });
+  $("#ow-sort").value = o.sort;
+  $("#ow-dir").textContent = o.dir > 0 ? "↑ 오름차순" : "↓ 내림차순";
+  const th = (k, cls = "") => `<th class="sort ${cls} ${o.sort === k ? (o.dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${OW_COLS[k].l}</th>`;
   const LIMIT = 400;
   $("#ow-count").textContent = `${rows.length.toLocaleString()}건${rows.length > LIMIT ? ` (상위 ${LIMIT}건 표시)` : ""}`;
-  $("#owTable").innerHTML = `<thead><tr><th>공시일</th><th>유형</th><th>법인</th><th>대주주 (관계)</th><th class="num">주식수</th><th class="num">금액</th><th>자금 일자</th><th>내용</th></tr></thead><tbody>${
+  $("#owTable").innerHTML = `<thead><tr>${th("date")}${th("cat")}${th("name")}${th("person")}${th("shares", "num")}${th("amount", "num")}${th("when")}<th>내용</th></tr></thead><tbody>${
     rows.slice(0, LIMIT).map(i => {
       const k = OW_KIND[i.cat] || "gray";
       const amt = i.amount ? `${i.amount >= 1e8 ? eok(i.amount) : (i.amount / 1e4).toFixed(0) + "만"}${i.est ? ' <span class="tag gray" title="원문에 단가가 없어 계산한 값">추정</span>' : ""}${i.amount_label ? `<div class="meta">${esc(i.amount_label)}</div>` : ""}` : '<span class="meta" title="종가·단가 확인 불가">미산출</span>';
@@ -958,6 +984,11 @@ function renderOwner() {
         <td>${i.event_date ? esc(i.event_date.replaceAll("-", ".")) + (i.date_to && i.date_to !== i.event_date ? `<div class="meta">~ ${esc(i.date_to.replaceAll("-", "."))}</div>` : "") : "-"}</td>
         <td class="wrap">${esc(i.how || "")}${i.note ? `<div class="meta" title="${esc(i.note)}">${esc(i.note.length > 70 ? i.note.slice(0, 70) + "…" : i.note)}</div>` : ""} ${DART_LINK(i, "원문")}</td></tr>`;
     }).join("") || `<tr><td colspan="8" class="empty">조건에 맞는 공시가 없습니다.</td></tr>`}</tbody>`;
+  $$("#owTable th.sort").forEach(h => h.onclick = () => {
+    const k = h.dataset.k;
+    if (o.sort === k) o.dir *= -1; else { o.sort = k; o.dir = OW_COLS[k].def; }
+    renderOwner();
+  });
   bindCo($("#owTable"));
 }
 
@@ -1296,6 +1327,7 @@ function infoCard(c) {
   const url = v => v ? `<a href="${esc(/^https?:/.test(v) ? v : "http://" + v)}" target="_blank" rel="noopener">${esc(v)}</a>` : "";
   const rows = [
     ["대표이사", esc(i.ceo || "")],
+    ["사업자번호", /^\d{10}$/.test(i.bizr_no || "") ? (n => `${n}<button class="copy" data-copy="${n}">복사</button>`)(`${i.bizr_no.slice(0,3)}-${i.bizr_no.slice(3,5)}-${i.bizr_no.slice(5)}`) : esc(i.bizr_no || "")],
     ["주소", i.addr ? `${esc(i.addr)}<button class="copy" data-copy="${esc(i.addr)}">복사</button>` : ""],
     ["대표전화", tel(i.phone)],
     ["팩스", esc(i.fax || "")],
