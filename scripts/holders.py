@@ -470,8 +470,9 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
             if not named and is_person(p["pledgor"]):
                 named = {p["pledgor"]}
             groups = {who: [c for c in p["contracts"] if c["debtor"] == who] for who in named}
-            if generic and is_person(p["pledgor"]):
-                groups[f"{p['pledgor']} 특수관계인"] = generic
+            if generic:
+                head = next(iter(sorted(named)), "") or re.sub(r"\s*외\s*\d*\s*인?$", "", p["pledgor"]).strip() or "최대주주"
+                groups[f"{head} 특수관계인"] = generic
             single = len(groups) == 1
             for who, cts in groups.items():
                 cts = cts or p["contracts"]
@@ -506,6 +507,8 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
                                    + (f" · 대금 지급(변경 예정)일 {p['close_date']}" if p.get("close_date") else "")})
                 items.append(it)
     for it in items:
+        if re.fullmatch(r"(?:[가-힣]\s)+[가-힣]", it.get("person", "")):  # '최 태 원' → '최태원'
+            it["person"] = it["person"].replace(" ", "")
         for k in ("event_date", "date_from", "date_to", "maturity"):
             v = it.get(k)
             if v and re.fullmatch(r"\d{8}", v):
