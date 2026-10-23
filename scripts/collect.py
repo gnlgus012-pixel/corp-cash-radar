@@ -1501,7 +1501,7 @@ def enrich_bond_dates(events: list[dict]) -> None:
             if e.get("category") != "회사채 발행" or e.get("detail"):
                 continue
             rn = e["rcept_no"]
-            if rn not in cache or (not cache[rn] and BOND_DIAG["retry"] < 400):
+            if rn not in cache or "exact" not in cache[rn] and BOND_DIAG["retry"] < 400:
                 BOND_DIAG["retry"] += 1
                 j = dart_get("bdRs.json", corp_code=e["corp_code"], bgn_de=e["date"], end_de=e["date"])
                 if j.get("status") == "013":  # 정정·발행조건확정은 최초 증권신고서 접수일로 조회됨 → 30일 전부터
@@ -1518,10 +1518,12 @@ def enrich_bond_dates(events: list[dict]) -> None:
                 prev = sorted((d for d in rows if str(d.get("rcept_no", "")) <= rn), key=lambda d: str(d.get("rcept_no", "")))
                 pick = [d for d in rows if d.get("rcept_no") == rn] or ([prev[-1]] if prev else rows[:1])
                 info = {}
+                exact = any(d.get("rcept_no") == rn for d in pick)
                 for d in pick:
                     for k in ("pymd", "sbd", "slta", "rpd", "bdnmn"):
                         if d.get(k) and k not in info:
                             info[k] = d[k]
+                info["exact"] = exact
                 cache[rn] = info
             info = cache[rn]
             pay = parse_date(info.get("pymd", "")) or (info.get("pymd") if re.fullmatch(r"\d{4}-\d{2}-\d{2}", info.get("pymd", "")) else None)
@@ -1531,10 +1533,8 @@ def enrich_bond_dates(events: list[dict]) -> None:
                 miss += 1
                 continue
             got += 1
-            if e["rcept_no"] in ("20260826000710", "20260826000826") or len(BOND_DIAG.setdefault("check", [])) < 3:
-                BOND_DIAG.setdefault("check", []).append({"corp": e["corp_name"], "rcept_no": e["rcept_no"], "pymd": pay,
-                                                          "slta": info.get("slta"), "bdnmn": info.get("bdnmn")})
-            e["detail"] = {"amount": to_int(info.get("slta")), "amount_label": "발행", "dates": [["납입일", pay]], "texts": []}
+            e["detail"] = {"amount": to_int(info.get("slta")),
+                           "amount_label": "발행" if info.get("exact") else "모집(최초 신고 기준, 증액 전일 수 있음)", "dates": [["납입일", pay]], "texts": []}
             if info.get("rpd"):
                 rp = parse_date(info["rpd"])
                 if rp:
