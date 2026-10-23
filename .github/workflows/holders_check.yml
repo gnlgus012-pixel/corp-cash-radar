@@ -2,11 +2,6 @@ name: 대주주 공시 파싱 검증 (최근 30일)
 
 on:
   workflow_dispatch: {}
-  push:
-    branches: [main]
-    paths:
-      - "scripts/holders.py"
-      - ".github/workflows/holders_check.yml"
 
 permissions:
   contents: write

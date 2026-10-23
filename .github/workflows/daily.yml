@@ -57,7 +57,7 @@ jobs:
         continue-on-error: true
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
-          RADAR_TIME_BUDGET_MIN: "15"
+          RADAR_TIME_BUDGET_MIN: "25"
         run: python scripts/holders.py
 
       # 화면 데이터를 비밀번호로 암호화 (원본은 올리지 않음). SITE_PASSWORD 가 없으면 원본 그대로

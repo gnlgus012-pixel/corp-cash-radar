@@ -36,7 +36,11 @@ PRICE_PATH = C.CACHE_DIR / "prices.json"
 CHECK_OUT = C.ROOT / "reports" / "holders_check.json"
 CHECK = "--check" in sys.argv
 
-HCFG = {"lookback_days": 365, "rescan_days": 4, "max_docs_per_run": 3000, **C.CFG.get("holders", {})}
+HCFG = {"lookback_days": 365, "rescan_days": 4, "max_docs_per_run": 3000, "backfill_weeks_per_run": 12,
+        "max_hyslr_calls_per_run": 250, **C.CFG.get("holders", {})}
+if C.os.environ.get("HOLDERS_BACKFILL_WEEKS"):
+    HCFG["backfill_weeks_per_run"] = int(C.os.environ["HOLDERS_BACKFILL_WEEKS"])
+    HCFG["max_hyslr_calls_per_run"] = 1200
 
 TARGETS = [  # (공시유형, 보고서명 핵심어(공백 제거), 종류)
     ("I", "최대주주등소유주식변동신고서", "change"),
@@ -317,7 +321,7 @@ def scan_lists(store: dict, today: date) -> None:
     windows.append((max(recent_from, oldest_needed), today))
     frm = C.parse_ymd(sc["from"]) if sc.get("from") else recent_from
     cur_end = frm - timedelta(days=1)
-    while cur_end >= oldest_needed:
+    while cur_end >= oldest_needed and len(windows) <= HCFG["backfill_weeks_per_run"]:
         windows.append((max(cur_end - timedelta(days=6), oldest_needed), cur_end))
         cur_end = cur_end - timedelta(days=7)
     for a, b in windows:
@@ -345,7 +349,7 @@ def scan_lists(store: dict, today: date) -> None:
                         page += 1
                     cur = e + timedelta(days=1)
         except (C.OutOfTime, C.DartError) as ex:
-            C.warn(f"대주주 공시 목록 조회 중단: {ex}")
+            C.warn(f"대주주 공시 목록 조회 중단 ({ex.__class__.__name__}) — 다음 실행에서 이어서")
             break
         if not sc.get("to") or C.ymd(b) > sc["to"]:
             sc["to"] = C.ymd(b)
@@ -361,12 +365,16 @@ def parse_pending(store: dict) -> None:
     pend = [rn for rn, d in store["docs"].items() if d.get("pv") != PARSE_VER]
     pend.sort(reverse=True)  # 최신 먼저
     C.log(f"대주주 공시 원문 대기 {len(pend):,}건")
+    import time
     for rn in pend[: HCFG["max_docs_per_run"]]:
+        if C.TIME_BUDGET_SEC and time.monotonic() - C._START > C.TIME_BUDGET_SEC - 300:
+            C.log("배당 수령 추정 시간 확보를 위해 원문 조회를 여기서 멈춤 (다음 실행에서 이어서)")
+            break
         d = store["docs"][rn]
         try:
             txt, err = C.dart_document(rn)
         except (C.OutOfTime, C.DartError) as ex:
-            C.warn(f"대주주 공시 원문 조회 중단: {ex}")
+            C.warn(f"대주주 공시 원문 조회 중단 ({ex.__class__.__name__}) — 다음 실행에서 이어서")
             break
         STATS["docs"] += 1
         if not txt:
@@ -532,10 +540,13 @@ def dividend_items(data: dict, today: date) -> list[dict]:
         for y in (yr - 1, yr - 2):
             key = f"{cc}:{y}"
             if key not in hy:
+                if STATS["hyslr_calls"] >= HCFG["max_hyslr_calls_per_run"]:
+                    STATS["hyslr_deferred"] += 1
+                    break
                 try:
                     j = C.dart_get("hyslrSttus.json", corp_code=cc, bsns_year=str(y), reprt_code="11011")
                 except (C.OutOfTime, C.DartError) as ex:
-                    C.warn(f"최대주주 현황 조회 중단: {ex}")
+                    C.warn(f"최대주주 현황 조회 중단 ({ex.__class__.__name__}) — 다음 실행에서 이어서")
                     C.save_json(HYSLR_PATH, hy)
                     return out
                 STATS["hyslr_calls"] += 1
@@ -626,6 +637,11 @@ def main() -> int:
                                                  "scan_from": store.get("scan", {}).get("from"),
                                                  "by_cat": Counter(i["cat"] for i in items)}}
     data_path.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    C.save_json(C.ROOT / "reports" / "holders_status.json", {   # 공개 저장소용: 건수만 (개인정보 없음)
+        "generated_at": C.now_kst().isoformat(timespec="minutes"), "items": len(items),
+        "by_cat": Counter(i["cat"] for i in items), "docs": len(store["docs"]), "pending": pend,
+        "scan_from": store.get("scan", {}).get("from"), "scan_to": store.get("scan", {}).get("to"),
+        "no_amount": sum(1 for i in items if not i.get("amount")), "stats": STATS})
     C.log(f"대주주 항목 {len(items):,}개 저장 (원문 대기 {pend:,}건, 목록 {store.get('scan', {}).get('from')}부터)")
     return 0
 

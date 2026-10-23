@@ -1,0 +1,59 @@
+name: 대주주 공시 과거분 채우기 (수동)
+
+# 처음 1년치 대주주 공시를 빨리 채우고 싶을 때 Actions 탭에서 [Run workflow].
+# 화면 데이터를 복호화 → 대주주 항목만 다시 붙임 → 다시 암호화. 일일 갱신과 겹치지 않게 같은 줄에 선다.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar-update
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: 캐시 복원
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+          restore-keys: radar-cache-
+      - run: pip install -r requirements.txt && mkdir -p cache
+      - name: 화면 데이터 복호화
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: python scripts/seal.py open docs/data/data.enc docs/data/data.json
+      - name: 대주주 공시 수집
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          RADAR_TIME_BUDGET_MIN: "50"
+          HOLDERS_BACKFILL_WEEKS: "60"
+        run: python scripts/holders.py
+      - name: 암호화
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          SITE_USERS: ${{ secrets.SITE_USERS }}
+          VISIT_LOG_URL: ${{ secrets.VISIT_LOG_URL }}
+        run: python scripts/seal.py seal docs/data/data.json docs/data/data.enc
+      - name: 캐시 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+      - name: 결과 반영
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A docs/data/ reports/
+          git diff --cached --quiet || { git commit -m "data: $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M') 대주주 공시 채우기"; git pull --rebase origin main; git push; }
