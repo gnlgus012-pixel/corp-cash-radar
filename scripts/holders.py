@@ -717,7 +717,7 @@ def main() -> int:
         "dividend_top": [{"corp": i["corp_name"], "rcept_no": i["rcept_no"], "amount": i["amount"], "shares": i["shares"], "how": i["how"],
                           "note": re.sub(r"[가-힣]{2,4}\s*\(", "(", i.get("note", ""))[:160], "relation": i.get("relation")} for i in sorted((x for x in items if x["cat"] == "배당 수령"),
                                                                               key=lambda x: -(x.get("amount") or 0))[:15]],
-        "corp_names_loaded": len(corp_names()), "hanjin_check": {"한진칼": "한진칼" in corp_names(), "is_person": is_person("한진칼")},
+        "corp_names_loaded": len(corp_names()),
         "dividend_anomalies": len(DIV_ANOM), "dividend_anomaly_samples": DIV_ANOM[:40], "stats": STATS})
     C.log(f"대주주 항목 {len(items):,}개 저장 (원문 대기 {pend:,}건, 목록 {store.get('scan', {}).get('from')}부터)")
     return 0
