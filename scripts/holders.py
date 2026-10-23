@@ -76,7 +76,11 @@ def corp_names() -> set:
     """DART 등록 회사명 (한화·기아처럼 짧은 회사명이 사람 이름으로 오인되지 않게)"""
     global _CORP_NAMES
     if _CORP_NAMES is None:
-        m = C.load_json(C.CACHE_DIR / "corpcode.json", {}).get("map", {})
+        try:
+            m = C.load_corp_codes()   # DART 고유번호 파일 (7일 캐시, 없으면 내려받음)
+        except Exception as ex:  # noqa: BLE001
+            C.warn(f"회사명 목록을 못 불러와 개인 판별이 덜 정확할 수 있습니다: {str(ex)[:80]}")
+            m = {}
         _CORP_NAMES = {re.sub(r"\s+|\(주\)|㈜|주식회사", "", v.get("name", "")) for v in m.values()}
         _CORP_NAMES.discard("")
     return _CORP_NAMES
@@ -649,6 +653,7 @@ def main() -> int:
     if not CHECK:
         C.save_json(STORE_PATH, store)
     prices = load_prices()
+    corp_names()
     corp_map = C.load_json(C.CACHE_DIR / "corpcode.json", {}).get("map", {})
     try:
         items = build_items(store, prices, today, corp_map)
