@@ -1504,6 +1504,9 @@ def enrich_bond_dates(events: list[dict]) -> None:
             if rn not in cache or (not cache[rn] and BOND_DIAG["retry"] < 400):
                 BOND_DIAG["retry"] += 1
                 j = dart_get("bdRs.json", corp_code=e["corp_code"], bgn_de=e["date"], end_de=e["date"])
+                if j.get("status") == "013":  # 정정·발행조건확정은 최초 증권신고서 접수일로 조회됨 → 30일 전부터
+                    bgn = (parse_ymd(e["date"]) - timedelta(days=30)).strftime("%Y%m%d")
+                    j = dart_get("bdRs.json", corp_code=e["corp_code"], bgn_de=bgn, end_de=e["date"])
                 BOND_DIAG["status"][j.get("status", "?")] += 1
                 if not BOND_DIAG["sample"] and j.get("status") == "000":
                     BOND_DIAG["sample"] = {"keys": sorted({k for d in _walk_dicts(j) for k in d})[:80],
@@ -1511,7 +1514,9 @@ def enrich_bond_dates(events: list[dict]) -> None:
                 if j.get("status") == "013":
                     BOND_DIAG["no_data_reports"].append(e["report_nm"][:30]) if len(BOND_DIAG["no_data_reports"]) < 15 else None
                 rows = [d for d in _walk_dicts(j) if any(k in d for k in ("pymd", "sbd", "slta"))]
-                pick = [d for d in rows if d.get("rcept_no") == rn] or rows
+                # 같은 접수번호 → 없으면 우리 공시 직전에 접수된 최초 신고서 (회차가 여럿이면 가장 가까운 것)
+                prev = sorted((d for d in rows if str(d.get("rcept_no", "")) <= rn), key=lambda d: str(d.get("rcept_no", "")))
+                pick = [d for d in rows if d.get("rcept_no") == rn] or ([prev[-1]] if prev else rows[:1])
                 info = {}
                 for d in pick:
                     for k in ("pymd", "sbd", "slta", "rpd", "bdnmn"):
