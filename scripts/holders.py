@@ -572,14 +572,25 @@ def dividend_items(data: dict, today: date) -> list[dict]:
                 rt = float(str(r["rt"]).replace(",", ""))
             except (TypeError, ValueError):
                 rt = None
-            # 검증: 한 사람 몫이 배당총액을 넘거나(보유주식수 > 배당 대상 주식수) 지분율과 크게 어긋나면 원천 수치 오류로 보고 지분율로 다시 계산
-            if implied and (qty > implied * 1.02 or (rt and abs(qty / implied * 100 - rt) > max(1.0, rt * 0.5))):
+            # 검증 (배당 대상 주식수 = 배당총액 ÷ 주당배당금 기준)
+            #  ① 한 사람 보유주식이 배당 대상 주식 전체보다 많음 → 공시 수치 오류 또는 차등배당 → 지분율로 계산, 확인 필요 표시
+            #  ② 보유주식 비중이 지분율의 절반에도 못 미침 → 무상증자 등으로 주식수가 옛 기준 → 지분율로 계산
+            #  (우선주·자사주가 있으면 비중이 지분율보다 커지는 게 정상이라 그 방향은 그대로 둠)
+            if implied and rt and 0 < rt <= 100:
+                share_pct = qty / implied * 100
+                if qty > implied * 1.02 or share_pct < rt / 2:
+                    DIV_ANOM.append({"corp": e["corp_name"], "rcept_no": e["rcept_no"], "dps": dps, "total": total,
+                                     "qty": qty, "rt": r["rt"], "implied_shares": round(implied),
+                                     "case": "over" if qty > implied * 1.02 else "stale"})
+                    new_qty = round(implied * rt / 100)
+                    fix = (f" · 확인 필요: 공시상 보유 {r['qty']:,}주가 배당 대상 주식수({round(implied):,}주)보다 많아(공시 오류 또는 차등배당) 지분율 {rt}%로 계산"
+                           if qty > implied * 1.02 else
+                           f" · 공시상 보유 {r['qty']:,}주가 지분율 {rt}%와 맞지 않아(무상증자 등) 지분율로 계산")
+                    qty = new_qty
+            elif implied and qty > implied * 1.02:
                 DIV_ANOM.append({"corp": e["corp_name"], "rcept_no": e["rcept_no"], "dps": dps, "total": total,
-                                 "qty": qty, "rt": r["rt"], "implied_shares": round(implied)})
-                if rt and 0 < rt <= 100:
-                    qty, fix = round(implied * rt / 100), f" (공시상 보유주식수 {r['qty']:,}주가 배당총액과 맞지 않아 지분율 {rt}%로 계산)"
-                else:
-                    continue
+                                 "qty": qty, "rt": r["rt"], "implied_shares": round(implied), "case": "drop"})
+                continue
             amt = round(qty * dps)
             out.append({"id": f"{e['rcept_no']}-d-{r['nm']}", "cat": "배당 수령", "rcept_no": e["rcept_no"],
                         "date": e["date"], "corp_code": cc, "corp_name": e["corp_name"], "stock_code": e.get("stock_code", ""),
@@ -663,6 +674,9 @@ def main() -> int:
         "over_1eok": Counter(i["cat"] for i in items if (i.get("amount") or 0) >= 1e8),
         "over_10eok": Counter(i["cat"] for i in items if (i.get("amount") or 0) >= 1e9),
         "max_by_cat": {c: max((i.get("amount") or 0) for i in items if i["cat"] == c) for c in {i["cat"] for i in items}},
+        "dividend_top": [{"corp": i["corp_name"], "rcept_no": i["rcept_no"], "amount": i["amount"], "shares": i["shares"], "how": i["how"],
+                          "fixed": "지분율" in i.get("note", "")} for i in sorted((x for x in items if x["cat"] == "배당 수령"),
+                                                                              key=lambda x: -(x.get("amount") or 0))[:15]],
         "dividend_anomalies": len(DIV_ANOM), "dividend_anomaly_samples": DIV_ANOM[:40], "stats": STATS})
     C.log(f"대주주 항목 {len(items):,}개 저장 (원문 대기 {pend:,}건, 목록 {store.get('scan', {}).get('from')}부터)")
     return 0
