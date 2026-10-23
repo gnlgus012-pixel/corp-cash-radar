@@ -643,7 +643,9 @@ def main() -> int:
         "generated_at": C.now_kst().isoformat(timespec="minutes"), "items": len(items),
         "by_cat": Counter(i["cat"] for i in items), "docs": len(store["docs"]), "pending": pend,
         "scan_from": store.get("scan", {}).get("from"), "scan_to": store.get("scan", {}).get("to"),
-        "no_amount": sum(1 for i in items if not i.get("amount")), "stats": STATS})
+        "no_amount": sum(1 for i in items if not i.get("amount")),
+        "over_1eok": Counter(i["cat"] for i in items if (i.get("amount") or 0) >= 1e8),
+        "over_10eok": Counter(i["cat"] for i in items if (i.get("amount") or 0) >= 1e9), "stats": STATS})
     C.log(f"대주주 항목 {len(items):,}개 저장 (원문 대기 {pend:,}건, 목록 {store.get('scan', {}).get('from')}부터)")
     return 0
 

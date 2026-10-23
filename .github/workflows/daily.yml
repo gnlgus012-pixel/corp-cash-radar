@@ -26,6 +26,8 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main   # 트리거 커밋이 아니라 최신 main (그 사이 올라온 데이터 커밋과 충돌 방지)
 
       - uses: actions/setup-python@v5
         with:
@@ -87,6 +89,6 @@ jobs:
             echo "변경 없음"
           else
             git commit -m "data: $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M') 갱신"
-            git pull --rebase origin main
+            git pull --rebase -X theirs origin main
             git push
           fi
