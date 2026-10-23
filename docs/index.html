@@ -112,6 +112,10 @@ tbody tr.click:hover{background:var(--surface-2)}
 .tw table td,.tw table th{white-space:nowrap}
 .tw td.wrap{white-space:normal;min-width:220px}
 
+.tag.cash{background:var(--in-bg);color:var(--in)}
+.tag.tax{background:var(--warn-bg);color:var(--warn)}
+.tag.loan{background:var(--sample-bg);color:var(--sample)}
+.tag.strike{text-decoration:line-through;opacity:.7}
 .tag{display:inline-block;font-size:11.5px;font-weight:600;border-radius:6px;padding:2px 7px;white-space:nowrap}
 .tag.in{background:var(--in-bg);color:var(--in)}
 .tag.out{background:var(--out-bg);color:var(--out)}
@@ -235,6 +239,23 @@ tbody tr.click:hover{background:var(--surface-2)}
 .gate label{display:flex;align-items:center;gap:6px;margin:10px 0 14px;font-size:13px;color:var(--ink-2)}
 .gate button{width:100%;padding:10px;font-size:15px;border:0;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer}
 .gate button:disabled{opacity:.6;cursor:default}
+.gate #gateId{margin-bottom:8px}
+.gate .hint{margin:8px 0 0;font-size:12px;color:var(--ink-3)}
+.gate input[type=text]{width:100%;box-sizing:border-box;padding:10px 12px;font-size:15px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink)}
+/* 업데이트 공지 */
+.notice{position:fixed;inset:0;z-index:90;background:rgba(10,16,28,.5);display:flex;align-items:center;justify-content:center;padding:16px}
+.notice[hidden]{display:none}
+.notice .box{background:var(--surface);color:var(--ink);border-radius:var(--radius);box-shadow:var(--shadow);width:100%;max-width:520px;max-height:80vh;overflow-y:auto;padding:22px 22px 16px}
+.notice h2{margin:0 0 12px;font-size:17px}
+.notice .ent{border-top:1px solid var(--line);padding:12px 0}
+.notice .ent:first-of-type{border-top:0;padding-top:0}
+.notice .ent b{font-size:14px}
+.notice .ent .d{font-size:12px;color:var(--ink-3);margin-left:6px}
+.notice .ent.new b::after{content:"NEW";font-size:10px;font-weight:700;color:#fff;background:var(--out);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:2px}
+.notice ul{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--ink-2);line-height:1.6}
+.notice .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+.notice .ft button{padding:8px 16px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);cursor:pointer;font-size:14px}
+.notice .ft button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 .gate .err{color:var(--out);font-size:13px;min-height:18px;margin-top:10px}
 </style>
 </head>
@@ -243,13 +264,19 @@ tbody tr.click:hover{background:var(--surface-2)}
   <form id="gateForm" autocomplete="on">
     <h2>법인WM AI 레이더</h2>
     <p>내부용 화면입니다. 비밀번호를 입력하세요.</p>
-    <input type="text" name="username" value="radar" autocomplete="username" hidden>
+    <input type="text" id="gateId" name="username" autocomplete="username" placeholder="아이디" hidden>
     <input type="password" id="gatePw" autocomplete="current-password" placeholder="비밀번호" required>
     <label><input type="checkbox" id="gateRemember" checked> 이 기기에서 기억</label>
     <button type="submit" id="gateBtn">열기</button>
     <div class="err" id="gateErr"></div>
+    <p class="hint" id="gateHint" hidden>공용 비밀번호로 들어올 때는 아이디를 비워두세요. 접속 시각과 아이디가 기록됩니다.</p>
   </form>
 </div>
+<div class="notice" id="notice" hidden><div class="box">
+  <h2>업데이트 소식</h2>
+  <div id="noticeBody"></div>
+  <div class="ft"><button class="pri" id="noticeOk">확인</button></div>
+</div></div>
 <header>
   <div class="hd">
     <div class="logo"><i></i>법인WM AI 레이더</div>
@@ -260,11 +287,13 @@ tbody tr.click:hover{background:var(--surface-2)}
       <div class="sugg" id="sugg"></div>
     </div>
     <button class="themebtn" id="themebtn" title="화면 테마">◐</button>
+    <button class="themebtn" onclick="showNotices(true)" title="업데이트 소식">📢</button>
     <button class="themebtn" onclick="radarLock()" title="잠금 (이 기기에 저장된 비밀번호 지우기)">🔒</button>
   </div>
   <nav id="nav">
     <button data-tab="brief" class="on">브리핑</button>
     <button data-tab="flow">자금 동향</button>
+    <button data-tab="owner">대주주(개인)</button>
     <button data-tab="screen">여유자금 법인</button>
     <button data-tab="prod">자금 성격별</button>
     <button data-tab="rate">금리</button>
@@ -334,6 +363,28 @@ tbody tr.click:hover{background:var(--surface-2)}
       <span class="count" id="ev-count"></span>
     </div>
     <div class="tw"><table id="evTable"></table></div>
+  </section>
+
+  <!-- 대주주(개인) -->
+  <section class="tab" id="t-owner">
+    <h2>대주주(개인) 자금 동향</h2>
+    <p class="sub">최대주주와 특수관계인 <b>개인</b>의 지분 매각·매도 계획·경영권 양도·증여·상속·주식담보·배당 수령. 금액에 <span class="tag gray">추정</span>이 붙은 건은 원문에 단가가 없어 종가나 주당배당금으로 계산한 값입니다.</p>
+    <div class="grid g4" id="ow-kpis" style="margin-bottom:14px"></div>
+    <div class="filters">
+      <div class="seg-btns" id="ow-period">
+        <button data-v="30" class="on">30일</button><button data-v="90">90일</button><button data-v="180">6개월</button><button data-v="365">1년</button>
+      </div>
+      <div class="seg-btns" id="ow-cat">
+        <button data-v="" class="on">전체</button><button data-v="지분 매각">지분 매각</button><button data-v="매도 계획">매도 계획</button><button data-v="경영권 양도">경영권 양도</button><button data-v="증여·상속">증여·상속</button><button data-v="주식담보">주식담보</button><button data-v="배당 수령">배당 수령</button>
+      </div>
+      <select id="ow-min"><option value="0">모든 금액</option><option value="100000000" selected>1억 이상</option><option value="1000000000">10억 이상</option><option value="10000000000">100억 이상</option></select>
+      <select id="ow-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
+      <input type="text" id="ow-q" placeholder="법인명·이름">
+      <label>정렬 <select id="ow-sort"><option value="date">공시일</option><option value="when">자금 일자</option><option value="amount">금액</option><option value="name">법인명</option></select></label>
+      <span class="count" id="ow-count"></span>
+    </div>
+    <div class="tw"><table id="owTable"></table></div>
+    <p class="meta" id="ow-foot" style="margin-top:8px"></p>
   </section>
 
   <!-- 스크리너 -->
@@ -468,6 +519,7 @@ const st = {
   ev: {period: 30, type: "", cat: "", mkt: "", q: "", sort: "date", dir: -1, basis: "disc", srange: "n30", skind: ""},
   sc: {mkt: "", seg: "", min: 0, fin: false, watch: false, q: "", sort: "score", dir: -1},
   topic: 0,
+  ow: {period: 30, cat: "", min: 1e8, mkt: "", q: "", sort: "date"},
 };
 
 /* ── 테마 ── */
@@ -495,22 +547,46 @@ async function decrypt(buf, key) {
   const stream = new Blob([plain]).stream().pipeThrough(new DecompressionStream("gzip"));
   return new Response(stream).json();
 }
-function askPassword(buf) {
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function sha256hex(t) {
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+  return [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+/* 개인 계정: keys.json 의 내 항목을 내 비밀번호로 풀어 사이트 키를 얻는다 */
+async function unwrapUserKey(keys, uid, pw) {
+  const h = (await sha256hex("radar-user:" + uid.trim().toLowerCase())).slice(0, 24);
+  const ent = keys.users[h];
+  if (!ent) throw new Error("no-user");
+  const salt = (await crypto.subtle.digest("SHA-256", new TextEncoder().encode("radar-salt:" + h))).slice(0, 16);
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+  const kek = await crypto.subtle.deriveKey({name: "PBKDF2", salt, iterations: ENC_ITER, hash: "SHA-256"},
+    base, {name: "AES-GCM", length: 256}, false, ["decrypt"]);
+  const raw = b64(ent);
+  const plain = await crypto.subtle.decrypt({name: "AES-GCM", iv: raw.slice(0, 12)}, kek, raw.slice(12));
+  const o = JSON.parse(new TextDecoder().decode(plain));
+  return {key: await crypto.subtle.importKey("raw", b64(o.k), {name: "AES-GCM"}, true, ["decrypt"]), user: o.u};
+}
+let VISITOR = null;
+function askPassword(buf, keys) {
   return new Promise(resolve => {
-    const gate = $("#gate"), form = $("#gateForm"), pw = $("#gatePw"), err = $("#gateErr"), btn = $("#gateBtn");
-    gate.hidden = false; pw.focus();
+    const gate = $("#gate"), form = $("#gateForm"), id = $("#gateId"), pw = $("#gatePw"), err = $("#gateErr"), btn = $("#gateBtn");
+    if (keys) { id.hidden = false; $("#gateHint").hidden = false; }
+    gate.hidden = false; (keys ? id : pw).focus();
     form.onsubmit = async ev => {
       ev.preventDefault();
       btn.disabled = true; btn.textContent = "확인 중…"; err.textContent = "";
       try {
-        const key = await deriveKey(pw.value);
+        let key, user;
+        if (keys && id.value.trim()) ({key, user} = await unwrapUserKey(keys, id.value, pw.value));
+        else { key = await deriveKey(pw.value); user = "공용"; }
         const data = await decrypt(buf, key);
         if ($("#gateRemember").checked) {
-          try { localStorage.setItem(KEY_STORE, JSON.stringify(await crypto.subtle.exportKey("jwk", key))); } catch(e) {}
+          try { localStorage.setItem(KEY_STORE, JSON.stringify({k: await crypto.subtle.exportKey("jwk", key), u: user})); } catch(e) {}
         }
-        gate.hidden = true; resolve(data);
+        VISITOR = user; gate.hidden = true; resolve(data);
       } catch(e) {
-        err.textContent = "비밀번호가 맞지 않습니다."; pw.select();
+        err.textContent = keys && id.value.trim() ? "아이디 또는 비밀번호가 맞지 않습니다." : "비밀번호가 맞지 않습니다.";
+        pw.select();
       } finally { btn.disabled = false; btn.textContent = "열기"; }
     };
   });
@@ -525,18 +601,50 @@ async function load() {
   }
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const buf = await r.arrayBuffer();
+  let keys = null;
+  try { const rk = await fetch(`data/keys.json?t=${Date.now()}`, {cache: "no-store"}); if (rk.ok) keys = await rk.json(); } catch(e) {}
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(KEY_STORE) || "null"); } catch(e) {}
   if (saved) {
+    if (saved.kty) saved = {k: saved, u: "공용"};   // 이전 형식
     try {
-      const key = await crypto.subtle.importKey("jwk", saved, {name: "AES-GCM"}, true, ["decrypt"]);
-      return await decrypt(buf, key);
+      const key = await crypto.subtle.importKey("jwk", saved.k, {name: "AES-GCM"}, true, ["decrypt"]);
+      const data = await decrypt(buf, key);
+      VISITOR = saved.u || "공용";
+      return data;
     } catch(e) { try { localStorage.removeItem(KEY_STORE); } catch(_) {} }   // 비밀번호가 바뀐 경우
   }
-  return askPassword(buf);
+  return askPassword(buf, keys);
 }
+/* 접속 기록: 구글 Apps Script 로 (아이디, 기기) 전송 — 주소는 암호화된 데이터 안에만 있음 */
+function logVisit() {
+  if (!D || !D.visit_log_url || !VISITOR) return;
+  try {
+    fetch(D.visit_log_url, {method: "POST", mode: "no-cors", headers: {"Content-Type": "text/plain"},
+      body: JSON.stringify({user: VISITOR, device: /Mobi|Android|iPhone/i.test(navigator.userAgent) ? "모바일" : "PC",
+                            page: location.hash || "#brief"})});
+  } catch(e) {}
+}
+/* 업데이트 공지: docs/notices.json 의 최신 항목을 처음 한 번 띄움 (확인하면 다음부터 안 뜸) */
+const NOTICE_SEEN = "radar-notice-seen";
+async function showNotices(force) {
+  let list = [];
+  try { const r = await fetch(`notices.json?t=${Date.now()}`, {cache: "no-store"}); if (r.ok) list = (await r.json()).notices || []; } catch(e) {}
+  if (!list.length) return;
+  list.sort((a, b) => String(b.id).localeCompare(String(a.id)));
+  let seen = "";
+  try { seen = localStorage.getItem(NOTICE_SEEN) || ""; } catch(e) {}
+  const fresh = list.filter(n => n.id > seen);
+  if (!force && !fresh.length) return;
+  const show = force ? list.slice(0, 6) : fresh;
+  $("#noticeBody").innerHTML = show.map(n => `<div class="ent${n.id > seen ? " new" : ""}"><b>${esc(n.title)}</b><span class="d">${esc(n.date)}</span>
+    <ul>${(n.items || []).map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>`).join("");
+  $("#notice").hidden = false;
+  $("#noticeOk").onclick = () => { try { localStorage.setItem(NOTICE_SEEN, list[0].id); } catch(e) {} $("#notice").hidden = true; };
+}
+window.showNotices = showNotices;
 window.radarLock = () => { try { localStorage.removeItem(KEY_STORE); } catch(e) {} location.reload(); };
-load().then(init).catch(e => {
+load().then(d => { init(d); logVisit(); showNotices(); }).catch(e => {
   $("main").innerHTML = `<div class="card empty">데이터를 불러오지 못했습니다 (${esc(e.message)}).<br>GitHub Actions 첫 실행이 끝났는지 확인하세요.</div>`;
 });
 
@@ -552,7 +660,7 @@ function init(data) {
   if (D.meta.warnings?.length) b += `<details class="banner warn"><summary>수집 경고 ${D.meta.warnings.length}건</summary><ul>${D.meta.warnings.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>`;
   $("#banners").innerHTML = b;
 
-  renderBrief(); initFlow(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
+  renderBrief(); initFlow(); initOwner(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
   $$("#nav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
   const h = location.hash.slice(1);
   if (h.startsWith("c=")) openCompany(h.slice(2)); else if (/^[a-z]+$/.test(h)) showTab(h);
@@ -784,6 +892,73 @@ function drawFlowChart() {
       s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="11" fill="var(--ink-3)">${w.lbl}</text>`;
   });
   $("#flowChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="주간 자금 유입·유출 공시 건수">${s}</svg>`;
+}
+
+/* ── 대주주(개인) ── */
+const OW_KIND = {"지분 매각": "cash", "매도 계획": "cash", "경영권 양도": "cash", "배당 수령": "cash", "증여·상속": "tax", "주식담보": "loan"};
+const OW_HINT = {cash: "현금 유입", tax: "세금 납부 자금 수요", loan: "차입·담보 — 대환·만기 관리 수요"};
+const isoDate = s => s ? s.replaceAll("-", "") : "";
+function initOwner() {
+  const H = D.holders;
+  if (!H) {
+    $("#t-owner").insertAdjacentHTML("beforeend", `<div class="card empty">대주주 데이터는 다음 갱신부터 표시됩니다.</div>`);
+    return;
+  }
+  const o = st.ow;
+  const seg = (id, key, num) => $$(`#${id} button`).forEach(b => b.onclick = () => {
+    $$(`#${id} button`).forEach(x => x.classList.toggle("on", x === b)); o[key] = num ? +b.dataset.v : b.dataset.v; renderOwner();
+  });
+  seg("ow-period", "period", 1); seg("ow-cat", "cat");
+  $("#ow-min").onchange = e => { o.min = +e.target.value; renderOwner(); };
+  $("#ow-mkt").onchange = e => { o.mkt = e.target.value; renderOwner(); };
+  $("#ow-q").oninput = e => { o.q = e.target.value.replace(/\s/g, ""); renderOwner(); };
+  $("#ow-sort").onchange = e => { o.sort = e.target.value; renderOwner(); };
+  const today = todayIso(), d30 = daysAgo(30);
+  const live = H.items.filter(i => !i.cancelled);
+  const sum = arr => arr.reduce((a, i) => a + (i.amount || 0), 0);
+  const sold = live.filter(i => (i.cat === "지분 매각" || i.cat === "경영권 양도") && i.date >= d30);
+  const plans = live.filter(i => i.cat === "매도 계획" && (i.date_to || i.event_date) >= today);
+  const pledAll = live.filter(i => i.cat === "주식담보" && i.date >= d30).sort((a, b) => b.date.localeCompare(a.date));
+  const seenP = new Set(), pled = pledAll.filter(i => { const k = i.corp_code + i.person; if (seenP.has(k)) return false; seenP.add(k); return true; });
+  const divs = live.filter(i => i.cat === "배당 수령" && i.event_date >= today);
+  $("#ow-kpis").innerHTML = [
+    {c: "in", l: "지분 매각·경영권 양도", v: eok(sum(sold)), n: `최근 30일 · ${sold.length}건 (일부 추정)`},
+    {c: "in", l: "진행·예정 매도 계획", v: eok(sum(plans)), n: `${plans.length}건 · 거래계획보고서 기준`},
+    {c: "", l: "주식담보 차입 (공시 기준)", v: eok(sum(pled)), n: `최근 30일 · ${pled.length}명`},
+    {c: "in", l: "지급 예정 배당 수령", v: eok(sum(divs)), n: `${divs.length}명 · 추정`},
+  ].map(k => `<div class="card kpi ${k.c}"><div class="lbl">${k.l}</div><div class="val">${k.v}</div><div class="note">${esc(k.n)}</div></div>`).join("");
+  const s = H.stats || {};
+  $("#ow-foot").textContent = `수집 범위 ${s.scan_from ? s.scan_from.slice(0,4)+"."+s.scan_from.slice(4,6)+"."+s.scan_from.slice(6) + " 이후" : "-"} 공시 ${(s.docs||0).toLocaleString()}건` +
+    (s.pending ? ` · 원문 분석 대기 ${s.pending.toLocaleString()}건 (매일 이어서 처리)` : "") +
+    " · 대상: 최대주주등소유주식변동신고서, 최대주주 변경 수반 주식양수도·담보제공 계약, 임원·주요주주 거래계획보고서, 현금배당결정 × 최대주주 현황";
+  renderOwner();
+}
+function renderOwner() {
+  const o = st.ow, from = daysAgo(o.period);
+  const rows = D.holders.items.filter(i =>
+    i.date >= from && (!o.cat || i.cat === o.cat) && (!o.mkt || i.corp_cls === o.mkt) &&
+    (o.min === 0 || (i.amount || 0) >= o.min) &&
+    (!o.q || (i.corp_name + i.person).replace(/\s/g, "").includes(o.q)));
+  const key = {date: i => i.date, when: i => isoDate(i.event_date), amount: i => i.amount || 0, name: i => i.corp_name}[o.sort];
+  rows.sort((a, b) => o.sort === "name" ? key(a).localeCompare(key(b), "ko") : (key(b) > key(a) ? 1 : key(b) < key(a) ? -1 : 0));
+  const LIMIT = 400;
+  $("#ow-count").textContent = `${rows.length.toLocaleString()}건${rows.length > LIMIT ? ` (상위 ${LIMIT}건 표시)` : ""}`;
+  $("#owTable").innerHTML = `<thead><tr><th>공시일</th><th>유형</th><th>법인</th><th>대주주 (관계)</th><th class="num">주식수</th><th class="num">금액</th><th>자금 일자</th><th>내용</th></tr></thead><tbody>${
+    rows.slice(0, LIMIT).map(i => {
+      const k = OW_KIND[i.cat] || "gray";
+      const amt = i.amount ? `${i.amount >= 1e8 ? eok(i.amount) : (i.amount / 1e4).toFixed(0) + "만"}${i.est ? ' <span class="tag gray" title="원문에 단가가 없어 계산한 값">추정</span>' : ""}${i.amount_label ? `<div class="meta">${esc(i.amount_label)}</div>` : ""}` : '<span class="meta" title="종가·단가 확인 불가">미산출</span>';
+      const canc = i.cancelled ? ` <span class="tag gray" title="${esc(i.cancel_reason || "")}">철회</span>` : "";
+      return `<tr class="${CO_BY_CODE[i.corp_code] ? "click" : ""}" data-co="${esc(i.corp_code)}">
+        <td>${dfmt(i.date)}</td>
+        <td><span class="tag ${k}${i.cancelled ? " strike" : ""}" title="${esc(OW_HINT[k] || "")}">${esc(i.cat)}</span>${canc}</td>
+        <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y:"유가",K:"코스닥",N:"코넥스"}[i.corp_cls] || "기타"}</div></td>
+        <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "-")}</div></td>
+        <td class="num">${i.shares ? i.shares.toLocaleString() : "-"}</td>
+        <td class="num">${amt}</td>
+        <td>${i.event_date ? esc(i.event_date.replaceAll("-", ".")) + (i.date_to && i.date_to !== i.event_date ? `<div class="meta">~ ${esc(i.date_to.replaceAll("-", "."))}</div>` : "") : "-"}</td>
+        <td class="wrap">${esc(i.how || "")}${i.note ? `<div class="meta" title="${esc(i.note)}">${esc(i.note.length > 70 ? i.note.slice(0, 70) + "…" : i.note)}</div>` : ""} ${DART_LINK(i, "원문")}</td></tr>`;
+    }).join("") || `<tr><td colspan="8" class="empty">조건에 맞는 공시가 없습니다.</td></tr>`}</tbody>`;
+  bindCo($("#owTable"));
 }
 
 /* ── 스크리너 ── */
@@ -1097,6 +1272,7 @@ function openCompany(code) {
           <div class="d" style="font-size:12.5px;color:var(--ink-2);margin-top:2px">${esc(e.report_nm)} ${OLD_TAG(e)}${e.detail?.superseded_by && !e.detail?.old ? '<span class="tag gray">이후 정정됨 — 최신 공시 기준</span>' : ""}</div></div>${DART_LINK(e)}</div>
           ${evFull(e)}
           <div class="meta" style="margin-top:4px">${esc(e.hint ?? D.meta.hints?.[e.category] ?? "")}</div></div>`).join("") || `<div class="empty">공시 없음</div>`}</div></div>
+      ${ownerCard(code)}
       <div class="card"><h3>관련 뉴스</h3>
         <div class="list">${(c.news || []).map(n => newsItem(n)).join("") || `<div class="sub" style="margin:0">수집된 기사가 없습니다 (점수 상위 법인만 수집).</div>`}</div></div>
     </div>`;
@@ -1104,6 +1280,15 @@ function openCompany(code) {
   document.body.style.overflow = "hidden";
   history.replaceState(null, "", "#c=" + code);
   $("#drawer .x").onclick = closeCompany;
+}
+function ownerCard(code) {
+  const L = (D.holders?.items || []).filter(i => i.corp_code === code).sort((a, b) => b.date.localeCompare(a.date));
+  if (!L.length) return "";
+  return `<div class="card"><h3>대주주(개인) 공시 <span class="sub" style="font-weight:400">${L.length}건</span></h3><table><tbody>${
+    L.slice(0, 30).map(i => `<tr><td>${dfmt(i.date)}</td><td><span class="tag ${OW_KIND[i.cat] || "gray"}${i.cancelled ? " strike" : ""}">${esc(i.cat)}</span></td>
+      <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "")}</div></td>
+      <td class="num">${i.amount ? eok(i.amount) + (i.est ? ' <span class="meta">추정</span>' : "") : "-"}</td>
+      <td class="wrap">${esc(i.how || "")} ${DART_LINK(i, "원문")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function infoCard(c) {
   const i = c.info || {}, ct = c.contact;

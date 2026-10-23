@@ -36,7 +36,7 @@ PRICE_PATH = C.CACHE_DIR / "prices.json"
 CHECK_OUT = C.ROOT / "reports" / "holders_check.json"
 CHECK = "--check" in sys.argv
 
-HCFG = {"lookback_days": 365, "rescan_days": 4, "max_docs_per_run": 900, **C.CFG.get("holders", {})}
+HCFG = {"lookback_days": 365, "rescan_days": 4, "max_docs_per_run": 3000, **C.CFG.get("holders", {})}
 
 TARGETS = [  # (공시유형, 보고서명 핵심어(공백 제거), 종류)
     ("I", "최대주주등소유주식변동신고서", "change"),
@@ -99,8 +99,10 @@ def num(s) -> int | None:
 
 
 def ymd_dash(s: str) -> str | None:
-    d = C.parse_date(s or "")
-    return d
+    s = (s or "").strip()
+    if re.fullmatch(r"20\d{6}", s):
+        return f"{s[:4]}-{s[4:6]}-{s[6:]}"
+    return C.parse_date(s)
 
 
 def cell(row, i, default=""):
@@ -405,12 +407,8 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
                 groups = defaultdict(list)
                 for ch in person["changes"]:
                     cause = ch["cause"]
-                    if INHERIT_RX.search(cause):
-                        cat = "상속"
-                    elif GIFT_OUT_RX.search(cause) and ("(-)" in cause or (ch["delta"] or 0) < 0 or "수증" not in cause):
-                        cat = "증여" if "수증" not in cause else "수증"
-                    elif "수증" in cause:
-                        cat = "수증"
+                    if INHERIT_RX.search(cause) or GIFT_OUT_RX.search(cause) or "수증" in cause:
+                        cat = "증여·상속"
                     elif SELL_RX.search(cause) and "매수" not in cause:
                         cat = "지분 매각"
                     else:
@@ -436,7 +434,19 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
         elif k == "plan":
             if "개인" not in p.get("reporter_type", ""):
                 continue
-            sells = [x for x in p["plans"] if re.search(r"\(-\)|매도|처분", x.get("method", ""))]
+            outs = [x for x in p["plans"] if re.search(r"\(-\)|매도|처분|증여", x.get("method", ""))]
+            gifts = [x for x in outs if "증여" in x["method"]]
+            sells = [x for x in outs if x not in gifts]
+            for g in gifts:  # 증여 계획 → 증여·상속 (수증자 증여세 수요), 금액은 예정 단가 또는 공시일 종가로 추정
+                it = base_item(rn, d, "증여·상속")
+                sh = abs(g["shares"] or 0)
+                px = g["price"] if g.get("price") and g["price"] > 0 else close_on(prices, it["stock_code"], ymd_dash(d["date"]) or g["start"], today)
+                it.update({"person": p["name"], "relation": " · ".join(x for x in (p["position"], p["major"]) if x and x != "-"),
+                           "shares": sh, "amount": (abs(g["amount"]) if g.get("amount") else (sh * px if px and sh else None)),
+                           "est": not g.get("amount"), "event_date": g["start"],
+                           "how": "증여 예정 (거래계획보고서)",
+                           "note": "예정일 " + g["start"] + (" · 목적: " + p["purpose"] if p.get("purpose") and p["purpose"] != "-" else "")})
+                items.append(it)
             if not sells:
                 continue
             it = base_item(rn, d, "매도 계획")
@@ -445,7 +455,7 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
             cs = [c for c in cancels.get((d["corp_code"], nm), []) if c[0] >= d["date"]]
             canc = [c for c in cs if starts & set(c[2])] or [c for c in cs if not c[2]]
             it.update({"person": p["name"], "relation": " · ".join(x for x in (p["position"], p["major"]) if x and x != "-"),
-                       "shares": sum(x["shares"] or 0 for x in sells), "amount": sum(x["amount"] or 0 for x in sells) or None,
+                       "shares": sum(abs(x["shares"] or 0) for x in sells), "amount": sum(abs(x["amount"] or 0) for x in sells) or None,
                        "est": False, "event_date": min(x["start"] for x in sells), "date_to": max((x["end"] or x["start"]) for x in sells),
                        "how": ", ".join(sorted({re.sub(r"\s*\([+-]\)", "", x["method"]) for x in sells})),
                        "note": ("거래 예정 기간 " + min(x["start"] for x in sells) + " ~ " + max((x["end"] or x["start"]) for x in sells)
@@ -454,20 +464,29 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
                        "cancel_reason": canc[0][3] if canc else None})
             items.append(it)
         elif k == "pledge":
-            debtors = {c["debtor"] for c in p["contracts"] if is_person(c["debtor"])}
-            if not debtors and is_person(p["pledgor"]):
-                debtors = {p["pledgor"]}
-            for who in debtors:
-                cts = [c for c in p["contracts"] if c["debtor"] == who] or p["contracts"]
+            GENERIC = ("특수관계인", "최대주주", "본인", "기타", "대표이사")
+            named = {c["debtor"] for c in p["contracts"] if is_person(c["debtor"]) and c["debtor"] not in GENERIC}
+            generic = [c for c in p["contracts"] if c["debtor"] in GENERIC]
+            if not named and is_person(p["pledgor"]):
+                named = {p["pledgor"]}
+            groups = {who: [c for c in p["contracts"] if c["debtor"] == who] for who in named}
+            if generic and is_person(p["pledgor"]):
+                groups[f"{p['pledgor']} 특수관계인"] = generic
+            single = len(groups) == 1
+            for who, cts in groups.items():
+                cts = cts or p["contracts"]
                 new = [c for c in cts if p["contract_date"] and c.get("signed") == p["contract_date"]] or cts[:1]
                 it = base_item(rn, d, "주식담보")
                 ends = sorted(c["end"] for c in cts if c.get("end"))
+                set_new = sum(c["amount"] or 0 for c in new)
                 it.update({"person": who, "relation": p.get("debtor_relation") or "최대주주",
-                           "shares": sum(c["shares"] or 0 for c in new), "amount": sum(c["amount"] or 0 for c in new) or None,
-                           "est": False, "event_date": p.get("contract_date") or d["date"],
+                           "shares": sum(c["shares"] or 0 for c in new),
+                           "amount": (p.get("debt_total") if single and p.get("debt_total") else (sum(c["amount"] or 0 for c in cts) or None)),
+                           "est": False, "event_date": p.get("contract_date") or ymd_dash(d["date"]),
                            "how": ", ".join(sorted({c["lender"] for c in new if c.get("lender")})),
                            "debt_total": p.get("debt_total"), "maturity": ends[0] if ends else None,
-                           "note": (f"총 차입 {C.eok(p['debt_total'])}" if p.get("debt_total") else "")
+                           "amount_label": "차입 총액" if single and p.get("debt_total") else "담보설정액",
+                           "note": (f"이번 담보설정 {C.eok(set_new)}" if set_new else "")
                                    + (f" · 가장 빠른 만기 {ends[0]}" if ends else "")
                                    + (f" · 목적 {new[0]['purpose']}" if new and new[0].get("purpose") else "")})
                 items.append(it)
@@ -486,6 +505,11 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
                            "note": (f"계약 전체 {C.eok(p['amount'])}" if p.get("amount") else "")
                                    + (f" · 대금 지급(변경 예정)일 {p['close_date']}" if p.get("close_date") else "")})
                 items.append(it)
+    for it in items:
+        for k in ("event_date", "date_from", "date_to", "maturity"):
+            v = it.get(k)
+            if v and re.fullmatch(r"\d{8}", v):
+                it[k] = f"{v[:4]}-{v[4:6]}-{v[6:]}"
     return items
 
 

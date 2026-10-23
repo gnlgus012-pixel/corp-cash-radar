@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "scripts/collect.py"
+      - "scripts/holders.py"
       - "config/**"
       - ".github/workflows/daily.yml"
 
@@ -22,7 +23,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +50,15 @@ jobs:
           ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
           RADAR_TIME_BUDGET_MIN: "40"   # 이 시간이 지나면 모은 데까지 저장하고 정상 종료
         run: python scripts/collect.py
+
+      # 대주주(개인) 자금 공시 — 수집 결과(data.json)에 붙임. 실패해도 나머지 화면은 그대로
+      - name: 대주주 공시 수집
+        if: always()
+        continue-on-error: true
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          RADAR_TIME_BUDGET_MIN: "15"
+        run: python scripts/holders.py
 
       # 화면 데이터를 비밀번호로 암호화 (원본은 올리지 않음). SITE_PASSWORD 가 없으면 원본 그대로
       - name: 암호화
