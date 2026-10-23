@@ -55,6 +55,8 @@ jobs:
         if: always()
         env:
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          SITE_USERS: ${{ secrets.SITE_USERS }}
+          VISIT_LOG_URL: ${{ secrets.VISIT_LOG_URL }}
         run: python scripts/seal.py seal docs/data/data.json docs/data/data.enc
 
       # 수집이 실패·중단돼도 그때까지 모은 캐시는 저장 → 다음 실행이 이어서 수집

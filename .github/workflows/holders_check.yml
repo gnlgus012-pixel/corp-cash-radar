@@ -1,17 +1,18 @@
-name: 대주주 공시 사전 조사
+name: 대주주 공시 파싱 검증 (최근 30일)
 
 on:
   workflow_dispatch: {}
   push:
     branches: [main]
     paths:
-      - "scripts/holders_probe.py"
+      - "scripts/holders.py"
+      - ".github/workflows/holders_check.yml"
 
 permissions:
   contents: write
 
 jobs:
-  probe:
+  check:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -21,14 +22,14 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt && mkdir -p cache
-      - name: 조사
+      - name: 검증
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           RADAR_TIME_BUDGET_MIN: "25"
-        run: python scripts/holders_probe.py
+        run: python scripts/holders.py --check
       - name: 결과 반영
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add reports/holders_probe.json
-          git diff --cached --quiet || { git commit -m "probe: 대주주 공시 조사"; git pull --rebase origin main; git push; }
+          git add reports/holders_check.json
+          git diff --cached --quiet || { git commit -m "check: 대주주 공시 파싱 검증"; git pull --rebase origin main; git push; }
