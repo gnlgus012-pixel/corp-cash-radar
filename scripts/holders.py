@@ -613,14 +613,14 @@ def dividend_items(data: dict, today: date) -> list[dict]:
             #  (우선주·자사주가 있으면 비중이 지분율보다 커지는 게 정상이라 그 방향은 그대로 둠)
             if implied and rt and 0 < rt <= 100:
                 share_pct = qty / implied * 100
-                if qty > implied * 1.02 or share_pct < rt / 2:
+                if qty > implied * 1.02 or share_pct < rt / 2 or share_pct > rt * 2.5:
                     DIV_ANOM.append({"corp": e["corp_name"], "rcept_no": e["rcept_no"], "dps": dps, "total": total,
                                      "qty": qty, "rt": r["rt"], "implied_shares": round(implied),
-                                     "case": "over" if qty > implied * 1.02 else "stale"})
+                                     "case": "over" if qty > implied * 1.02 else ("stale" if share_pct < rt / 2 else "inflated")})
                     new_qty = round(implied * rt / 100)
                     fix = (f" · 확인 필요: 공시상 보유 {r['qty']:,}주가 배당 대상 주식수({round(implied):,}주)보다 많아(공시 오류 또는 차등배당) 지분율 {rt}%로 계산"
                            if qty > implied * 1.02 else
-                           f" · 공시상 보유 {r['qty']:,}주가 지분율 {rt}%와 맞지 않아(무상증자 등) 지분율로 계산")
+                           f" · 공시상 보유 {r['qty']:,}주가 지분율 {rt}%와 맞지 않아 지분율로 계산 (원문 확인 권장)")
                     qty = new_qty
             elif implied and qty > implied * 1.02:
                 DIV_ANOM.append({"corp": e["corp_name"], "rcept_no": e["rcept_no"], "dps": dps, "total": total,
@@ -710,7 +710,7 @@ def main() -> int:
         "over_10eok": Counter(i["cat"] for i in items if (i.get("amount") or 0) >= 1e9),
         "max_by_cat": {c: max((i.get("amount") or 0) for i in items if i["cat"] == c) for c in {i["cat"] for i in items}},
         "dividend_top": [{"corp": i["corp_name"], "rcept_no": i["rcept_no"], "amount": i["amount"], "shares": i["shares"], "how": i["how"],
-                          "fixed": "지분율" in i.get("note", "")} for i in sorted((x for x in items if x["cat"] == "배당 수령"),
+                          "note": re.sub(r"[가-힣]{2,4}\s*\(", "(", i.get("note", ""))[:160], "relation": i.get("relation")} for i in sorted((x for x in items if x["cat"] == "배당 수령"),
                                                                               key=lambda x: -(x.get("amount") or 0))[:15]],
         "dividend_anomalies": len(DIV_ANOM), "dividend_anomaly_samples": DIV_ANOM[:40], "stats": STATS})
     C.log(f"대주주 항목 {len(items):,}개 저장 (원문 대기 {pend:,}건, 목록 {store.get('scan', {}).get('from')}부터)")
