@@ -307,6 +307,7 @@ def close_on(prices: dict, code: str, d: str, today: date) -> int | None:
 
 # ───────────────────────── 수집 ─────────────────────────
 STATS = Counter()
+DIV_ANOM: list[dict] = []   # 배당 추정 검증에서 걸린 건 (개인 이름 없이 회사·수치만)
 
 
 def scan_lists(store: dict, today: date) -> None:
@@ -561,15 +562,30 @@ def dividend_items(data: dict, today: date) -> list[dict]:
         if not rows:
             continue
         dates = dict(det.get("dates") or [])
+        total = det.get("amount")  # 배당총액
+        implied = total / dps if total else None  # 배당 대상 주식수 (배당총액 ÷ 주당배당금)
         for r in rows:
             if "보통" not in r["kind"] or not r["qty"] or not is_person(r["nm"]) or r["nm"] in ("계", "합계"):
                 continue
-            amt = round(r["qty"] * dps)
+            qty, fix = r["qty"], ""
+            try:
+                rt = float(str(r["rt"]).replace(",", ""))
+            except (TypeError, ValueError):
+                rt = None
+            # 검증: 한 사람 몫이 배당총액을 넘거나(보유주식수 > 배당 대상 주식수) 지분율과 크게 어긋나면 원천 수치 오류로 보고 지분율로 다시 계산
+            if implied and (qty > implied * 1.02 or (rt and abs(qty / implied * 100 - rt) > max(1.0, rt * 0.5))):
+                DIV_ANOM.append({"corp": e["corp_name"], "rcept_no": e["rcept_no"], "dps": dps, "total": total,
+                                 "qty": qty, "rt": r["rt"], "implied_shares": round(implied)})
+                if rt and 0 < rt <= 100:
+                    qty, fix = round(implied * rt / 100), f" (공시상 보유주식수 {r['qty']:,}주가 배당총액과 맞지 않아 지분율 {rt}%로 계산)"
+                else:
+                    continue
+            amt = round(qty * dps)
             out.append({"id": f"{e['rcept_no']}-d-{r['nm']}", "cat": "배당 수령", "rcept_no": e["rcept_no"],
                         "date": e["date"], "corp_code": cc, "corp_name": e["corp_name"], "stock_code": e.get("stock_code", ""),
-                        "corp_cls": e.get("corp_cls", ""), "person": r["nm"], "relation": r["relate"], "shares": r["qty"],
+                        "corp_cls": e.get("corp_cls", ""), "person": r["nm"], "relation": r["relate"], "shares": qty,
                         "amount": amt, "est": True, "event_date": dates.get("지급예정일") or dates.get("기준일") or f"{e['date'][:4]}-{e['date'][4:6]}-{e['date'][6:]}",
-                        "how": f"주당 {dps:,}원", "note": f"{used_year}년 사업보고서 기준 보유 {r['qty']:,}주 ({r['rt']}%) × 주당 {dps:,}원 추정"})
+                        "how": f"주당 {dps:,}원", "note": f"{used_year}년 사업보고서 기준 보유 {qty:,}주 ({r['rt']}%) × 주당 {dps:,}원 추정" + fix})
     C.save_json(HYSLR_PATH, hy)
     return out
 
@@ -645,7 +661,9 @@ def main() -> int:
         "scan_from": store.get("scan", {}).get("from"), "scan_to": store.get("scan", {}).get("to"),
         "no_amount": sum(1 for i in items if not i.get("amount")),
         "over_1eok": Counter(i["cat"] for i in items if (i.get("amount") or 0) >= 1e8),
-        "over_10eok": Counter(i["cat"] for i in items if (i.get("amount") or 0) >= 1e9), "stats": STATS})
+        "over_10eok": Counter(i["cat"] for i in items if (i.get("amount") or 0) >= 1e9),
+        "max_by_cat": {c: max((i.get("amount") or 0) for i in items if i["cat"] == c) for c in {i["cat"] for i in items}},
+        "dividend_anomalies": len(DIV_ANOM), "dividend_anomaly_samples": DIV_ANOM[:40], "stats": STATS})
     C.log(f"대주주 항목 {len(items):,}개 저장 (원문 대기 {pend:,}건, 목록 {store.get('scan', {}).get('from')}부터)")
     return 0
 
