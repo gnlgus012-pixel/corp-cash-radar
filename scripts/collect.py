@@ -1531,6 +1531,9 @@ def enrich_bond_dates(events: list[dict]) -> None:
                 miss += 1
                 continue
             got += 1
+            if e["rcept_no"] in ("20260826000710", "20260826000826") or len(BOND_DIAG.setdefault("check", [])) < 3:
+                BOND_DIAG.setdefault("check", []).append({"corp": e["corp_name"], "rcept_no": e["rcept_no"], "pymd": pay,
+                                                          "slta": info.get("slta"), "bdnmn": info.get("bdnmn")})
             e["detail"] = {"amount": to_int(info.get("slta")), "amount_label": "발행", "dates": [["납입일", pay]], "texts": []}
             if info.get("rpd"):
                 rp = parse_date(info["rpd"])
