@@ -819,14 +819,18 @@ def update_details(events: list[dict]) -> dict:
                 continue
             rn = e["rcept_no"]
             if rn in cache and cache[rn].get("v") == VER[e["category"]]:
-                continue
+                c0 = cache[rn]
+                # 원문 조회 오류(공시 직후 DART에 파일이 아직 없음 014 등)는 영구 저장하지 않고 다음 실행에서 다시 시도 (최대 6회)
+                if not (c0.get("err") and "너무 큼" not in c0["err"] and c0.get("tries", 1) < 6):
+                    continue
+                STATS["detail_retry"] = STATS.get("detail_retry", 0) + 1
             if fetched >= dc["max_docs_per_run"]:
                 pending += 1
                 continue
             text, err = dart_document(rn)
             fetched += 1
             if text is None:
-                cache[rn] = {"err": err, "v": VER[e["category"]]}
+                cache[rn] = {"err": err, "v": VER[e["category"]], "tries": (cache.get(rn) or {}).get("tries", 0) + 1}
                 continue
             rows, corr = doc_tables(text)
             det = extract_detail(rows, spec, corr)
