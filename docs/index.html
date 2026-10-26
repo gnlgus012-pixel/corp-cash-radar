@@ -274,6 +274,7 @@ tbody tr.click:hover{background:var(--surface-2)}
 .notice .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 .notice .ft button{padding:8px 16px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);cursor:pointer;font-size:14px}
 .notice .ft button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.gate .gate-install{margin-top:10px;background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
 .gate .err{color:var(--out);font-size:13px;min-height:18px;margin-top:10px}
 </style>
 </head>
@@ -287,6 +288,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <label><input type="checkbox" id="gateRemember" checked> 이 기기에서 기억</label>
     <button type="submit" id="gateBtn">열기</button>
     <div class="err" id="gateErr"></div>
+    <button type="button" class="gate-install" id="gateInstall" hidden onclick="showInstall()">📱 앱으로 설치하고 열기</button>
     <p class="hint" id="gateHint" hidden>공용 비밀번호로 들어올 때는 아이디를 비워두세요. 접속 시각과 아이디가 기록됩니다.</p>
   </form>
 </div>
@@ -729,7 +731,10 @@ const IN_APPVIEW = IN_KAKAO || /NAVER\(inapp|Line\/|Instagram|FBAN|FBAV|; wv\)/i
 const pageUrl = () => location.href.split("#")[0].replace(/[?&]install=1/, "");
 function openOutside() {
   // 카카오톡 등 앱 안 브라우저에서는 설치가 막혀 있어 기본 브라우저(사파리·크롬)로 넘긴다
-  const u = pageUrl() + (pageUrl().includes("?") ? "&" : "?") + "install=1";
+  let u = pageUrl() + (pageUrl().includes("?") ? "&" : "?") + "install=1";
+  // 이미 이 앱(카톡)에서 비밀번호를 기억해 둔 경우, 넘어간 브라우저에서 다시 묻지 않도록 키를 주소 # 뒤에 실어 보냄
+  // (# 뒤는 서버로 전송되지 않고, 받는 쪽에서 즉시 저장 후 주소에서 지움)
+  try { const k = localStorage.getItem(KEY_STORE); if (k) u += "#k=" + encodeURIComponent(btoa(unescape(encodeURIComponent(k)))); } catch(e) {}
   if (IN_KAKAO) { location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(u); return true; }
   if (IS_ANDROID) { location.href = "intent://" + u.replace(/^https?:\/\//, "") + "#Intent;scheme=https;package=com.android.chrome;end"; return true; }
   return false;
@@ -768,6 +773,13 @@ function afterLoginInstall() {
 // 홈 화면 앱(PWA): 서비스워커 등록 (지원 안 하는 브라우저는 그냥 웹으로 동작)
 if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js").catch(() => {}); } catch(e) {} }
 window.radarLock = () => { try { localStorage.removeItem(KEY_STORE); } catch(e) {} location.reload(); };
+// 카톡에서 넘겨받은 키(#k=...) 저장 후 주소에서 제거
+if (location.hash.startsWith("#k=")) {
+  try { const k = decodeURIComponent(escape(atob(decodeURIComponent(location.hash.slice(3))))); JSON.parse(k); localStorage.setItem(KEY_STORE, k); } catch(e) {}
+  history.replaceState(null, "", location.pathname + location.search);
+}
+// 비밀번호 화면에서도 바로 설치 (모바일 웹·카톡 안에서만 표시)
+if (!IS_APP && (IN_APPVIEW || IS_IOS || IS_ANDROID)) { const g = document.getElementById("gateInstall"); if (g) g.hidden = false; }
 load().then(d => { init(d); logVisit(); if (!afterLoginInstall()) showNotices(); }).catch(e => {
   $("main").innerHTML = `<div class="card empty">데이터를 불러오지 못했습니다 (${esc(e.message)}).<br>GitHub Actions 첫 실행이 끝났는지 확인하세요.</div>`;
 });
