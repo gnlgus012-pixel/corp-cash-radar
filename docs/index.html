@@ -325,13 +325,9 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="sub" id="brief-sub"></p>
     <div class="grid g4" id="kpis"></div>
     <div class="rates" id="rates"></div>
-    <div class="card" style="margin-bottom:14px">
-      <h3>다가오는 자금 일정 <span class="sub" style="font-weight:400">공시 원문 기준 · 향후 30일 납입·배당지급·양수도·자사주 매매 시작일 (같은 건은 최신 정정 기준)</span></h3>
-      <div class="list sched" id="sched"></div>
-    </div>
     <div class="grid g2" style="margin-bottom:14px">
       <div class="card">
-        <h3>대규모 자금 유입 예정 <span class="sub" style="font-weight:400">향후 30일 납입 · IPO·증자·사채 300억 이상</span></h3>
+        <h3>대규모 자금 유입 예정 <span class="sub" style="font-weight:400">향후 30일 · 100억 이상 · 공시 원문의 실제 자금 일자</span></h3>
         <div class="list sched" id="bigIn"></div>
       </div>
       <div class="card">
@@ -841,32 +837,19 @@ function renderBrief() {
   }));
   sched.sort((a, b) => a.v.localeCompare(b.v) || (b.e.detail.amount || 0) - (a.e.detail.amount || 0));
   const wd = v => "일월화수목금토"[new Date(v + "T00:00:00").getDay()];
-  $("#sched").innerHTML = sched.slice(0, 12).map(({e, k, v}) => `
+  // 대규모 자금 유입 예정 = 향후 30일 실제 자금 일자(납입·지급·양수도·매매 시작 등) 중 100억 이상
+  const big = sched.filter(x => (x.e.detail?.amount || 0) >= 1e10);
+  $("#bigIn").innerHTML = big.slice(0, 6).map(({e, k, v}) => `
     <div class="li click" data-co="${esc(e.corp_code)}">
       <div class="dt">${v.slice(5).replace("-", ".")}<div class="dd">${wd(v)}요일</div></div>
-      <div><div class="t">${esc(e.corp_name)} <span class="tag gray">${esc(k)}</span></div>
-      <div class="d">${typeTag(e.type)} ${esc(e.category)}${e.detail.amount ? ` · ${esc(e.detail.amount_label)} <b>${amtTxt(e.detail)}</b>` : ""}</div></div>
+      <div><div class="t">${esc(e.corp_name)} <span class="tag gray">${esc(k)}</span>${e.category === "IPO 공모" ? ' <span class="tag in">IPO</span>' : ""}</div>
+      <div class="d">${typeTag(e.type)} ${esc(e.category)} · ${esc(e.detail.amount_label)} <b>${amtTxt(e.detail)}</b></div></div>
       <div class="r">${DART_LINK(e)}</div>
-    </div>`).join("") || `<div class="empty">향후 30일 내 예정된 일정이 없거나, 아직 공시 원문 수집 전입니다.</div>`;
-  if (sched.length > 12) $("#sched").insertAdjacentHTML("beforeend", `<div class="meta" style="padding-top:8px">외 ${sched.length - 12}건 — 자금 동향 탭에서 전체 확인</div>`);
-  bindCo($("#sched"));
-
-  // 대규모 자금 유입 예정: 향후 30일 납입일 · 300억 이상 (IPO·유상증자·메자닌·회사채·신종자본증권)
-  const BIG_CATS = new Set(["IPO 공모", "유상증자", "메자닌 발행", "회사채 발행", "신종자본증권 발행"]);
-  const big = D.events.filter(e => BIG_CATS.has(e.category) && !e.detail?.old && !e.detail?.dup && (e.detail?.amount || 0) >= 3e10)
-    .map(e => ({e, v: Object.fromEntries(e.detail.dates || []).납입일})).filter(x => x.v && x.v >= t0 && x.v <= t30)
-    .sort((a, b) => a.v.localeCompare(b.v) || b.e.detail.amount - a.e.detail.amount);
-  const seenB = new Set();
-  const bigU = big.filter(x => { const k = x.e.corp_code + x.e.category + x.v; if (seenB.has(k)) return false; seenB.add(k); return true; });
-  $("#bigIn").innerHTML = bigU.slice(0, 8).map(({e, v}) => `
-    <div class="li click" data-co="${esc(e.corp_code)}">
-      <div class="dt">${v.slice(5).replace("-", ".")}<div class="dd">${wd(v)}요일</div></div>
-      <div><div class="t">${esc(e.corp_name)} ${e.category === "IPO 공모" ? '<span class="tag in">IPO</span>' : ""}</div>
-      <div class="d">${esc(e.category)} · ${esc(e.detail.amount_label)} <b>${amtTxt(e.detail)}</b></div></div>
-      <div class="r">${DART_LINK(e)}</div></div>`).join("") || `<div class="empty">향후 30일 내 300억 이상 납입 예정 건이 없습니다.</div>`;
+    </div>`).join("") || `<div class="empty">향후 30일 내 100억 이상 자금 일정이 없거나, 아직 공시 원문 수집 전입니다.</div>`;
+  if (big.length > 6) $("#bigIn").insertAdjacentHTML("beforeend", `<div class="meta" style="padding-top:8px">외 ${big.length - 6}건 — 자금 동향 탭 '자금 일정 기준'에서 전체 확인</div>`);
   bindCo($("#bigIn"));
   const mats = (D.calendar?.items || []).filter(i => i.date >= t0 && i.date <= t30 && i.kind !== "대여금 회수")
-    .sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 8);
+    .sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 6);
   $("#soonMat").innerHTML = mats.map(i => `
     <div class="li click" data-co="${esc(i.corp_code)}">
       <div class="dt">${i.date.slice(5).replace("-", ".")}<div class="dd">${dday(i.date)}</div></div>
