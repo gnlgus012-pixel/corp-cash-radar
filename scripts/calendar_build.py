@@ -138,15 +138,24 @@ def build(store: dict, data: dict, today: date) -> list[dict]:
         k = (h["corp_code"], h["kind"], str(t.get("bd_tm")))
         if k not in seen or rn > seen[k][0]:
             seen[k] = (rn, t, h)
+    early = {}   # 법인별 만기 전 사채 취득(풋옵션 등 조기상환) 공시
+    for e in data.get("events", []):
+        if e.get("category") == "사채 조기취득":
+            early.setdefault(e["corp_code"], []).append(e)
     for (cc, kind, tm), (rn, t, h) in seen.items():
         d = ymd_dash(t.get("bd_mtd"))
         if not d or not (lo <= d <= hi):
             continue
+        iss = ymd_dash(t.get("pymd")) or ymd_dash(h["date"])
+        ers = [e for e in early.get(cc, []) if f"{e['date'][:4]}-{e['date'][4:6]}-{e['date'][6:]}" >= (iss or "")]
         items.append({"kind": "메자닌 만기", "corp_code": cc, "corp_name": h["corp_name"], "corp_cls": h.get("corp_cls", ""),
                       "date": d, "amount": C.to_int(t.get("bd_fta")), "rcept_no": rn,
                       "label": f"{tm}회 {MEZZ_API[kind][1]} · {t.get('bdis_mthn') or ''}".strip(" ·")
                                + (f" · 만기이자 {t['bd_intr_sf']}%" if t.get("bd_intr_sf") not in (None, "-", "") else ""),
-                      "issued": ymd_dash(t.get("pymd"))})
+                      "issued": ymd_dash(t.get("pymd")),
+                      "check": ("최근 1년 만기 전 사채 취득 공시 " + str(len(ers)) + "건 — 이미 상환됐을 수 있음") if ers
+                               else "발행액 기준 — 풋옵션·전환으로 잔액이 줄었을 수 있음",
+                      "early_rcept": ers[0]["rcept_no"] if ers else None})
     # 주식담보 만기: (법인, 대주주) 별 최신 공시
     latest = {}
     for i in (data.get("holders") or {}).get("items", []):

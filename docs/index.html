@@ -1253,7 +1253,7 @@ function renderCal() {
       <td><b>${esc(i.date.replaceAll("-", "."))}</b><div class="meta">${dday(i.date)}</div></td>
       <td><span class="tag ${CAL_KIND[i.kind]?.c || "gray"}" title="${esc(CAL_KIND[i.kind]?.hint || "")}">${esc(i.kind)}</span></td>
       <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y: "유가", K: "코스닥", N: "코넥스"}[i.corp_cls] || "비상장·기타"}</div></td>
-      <td class="wrap">${esc(i.label || "")}${i.issued ? `<div class="meta">발행 ${esc(i.issued.replaceAll("-", "."))}</div>` : ""}</td>
+      <td class="wrap">${esc(i.label || "")}${i.issued ? `<div class="meta">발행 ${esc(i.issued.replaceAll("-", "."))}</div>` : ""}${i.check ? `<div class="meta" style="color:var(--warn)">⚠ ${esc(i.check)}${i.early_rcept ? ` ${DART_LINK({rcept_no: i.early_rcept}, "조기취득 공시")}` : ""}</div>` : ""}</td>
       <td class="num">${i.amount ? eok(i.amount) : "-"}</td>
       <td>${DART_LINK(i, "원문")}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">조건에 맞는 만기가 없습니다.</td></tr>`}</tbody>`;
   $$("#calTable th.sort").forEach(h => h.onclick = () => { const k = h.dataset.k;
