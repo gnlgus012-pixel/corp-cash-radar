@@ -153,8 +153,7 @@ def build(store: dict, data: dict, today: date) -> list[dict]:
                       "label": f"{tm}회 {MEZZ_API[kind][1]} · {t.get('bdis_mthn') or ''}".strip(" ·")
                                + (f" · 만기이자 {t['bd_intr_sf']}%" if t.get("bd_intr_sf") not in (None, "-", "") else ""),
                       "issued": ymd_dash(t.get("pymd")),
-                      "check": ("최근 1년 만기 전 사채 취득 공시 " + str(len(ers)) + "건 — 이미 상환됐을 수 있음") if ers
-                               else "발행액 기준 — 풋옵션·전환으로 잔액이 줄었을 수 있음",
+                      "check": "조기상환 공시 있음" if ers else "잔액 확인",
                       "early_rcept": ers[0]["rcept_no"] if ers else None})
     # 주식담보 만기: (법인, 대주주) 별 최신 공시
     latest = {}

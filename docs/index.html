@@ -342,7 +342,7 @@ tbody tr.click:hover{background:var(--surface-2)}
         <div class="list sched" id="bigIn"></div>
       </div>
       <div class="card">
-        <h3>다가오는 만기 <span class="sub" style="font-weight:400">향후 30일 · 회사채·메자닌·주식담보 · 금액순</span></h3>
+        <h3>다가오는 만기 <span class="sub" style="font-weight:400">대주주 주식담보(90일) 우선 · 회사채·메자닌(30일) 금액순</span></h3>
         <div class="list sched" id="soonMat"></div>
       </div>
     </div>
@@ -937,12 +937,16 @@ function renderBrief() {
     </div>`).join("") || `<div class="empty">향후 30일 내 100억 이상 유입 일정이 없거나, 아직 공시 원문 수집 전입니다.</div>`;
   if (big.length > 6) $("#bigIn").insertAdjacentHTML("beforeend", `<div class="meta" style="padding-top:8px">외 ${big.length - 6}건 — 자금 동향 탭 '자금 일정 기준'에서 전체 확인</div>`);
   bindCo($("#bigIn"));
-  const mats = (D.calendar?.items || []).filter(i => i.date >= t0 && i.date <= t30 && i.kind !== "대여금 회수")
-    .sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 6);
+  // 대주주 주식담보대출 만기를 먼저(향후 90일, 날짜순) → 그 다음 회사채·메자닌(향후 30일, 금액순)
+  const t90 = (() => { const d = new Date(); d.setDate(d.getDate() + 90); return d.toISOString().slice(0, 10); })();
+  const calI = D.calendar?.items || [];
+  const pled = calI.filter(i => i.kind === "주식담보 만기" && i.date >= t0 && i.date <= t90).sort((a, b) => a.date.localeCompare(b.date));
+  const rest = calI.filter(i => (i.kind === "회사채 만기" || i.kind === "메자닌 만기") && i.date >= t0 && i.date <= t30).sort((a, b) => (b.amount || 0) - (a.amount || 0));
+  const mats = [...pled, ...rest].slice(0, 6);
   $("#soonMat").innerHTML = mats.map(i => `
     <div class="li click" data-co="${esc(i.corp_code)}">
       <div class="dt">${i.date.slice(5).replace("-", ".")}<div class="dd">${dday(i.date)}</div></div>
-      <div><div class="t">${esc(i.corp_name)} <span class="tag ${CAL_KIND[i.kind]?.c || "gray"}">${esc(i.kind)}</span></div>
+      <div><div class="t">${esc(i.corp_name)} <span class="tag ${CAL_KIND[i.kind]?.c || "gray"}">${esc(i.kind)}</span>${i.check ? ` <span class="tag tax">${esc(i.check)}</span>` : ""}</div>
       <div class="d">${esc(i.label || "")} · <b>${eok(i.amount)}</b></div></div>
       <div class="r">${DART_LINK(i)}</div></div>`).join("") || `<div class="empty">${D.calendar ? "향후 30일 내 만기가 없습니다." : "만기 데이터는 다음 갱신부터 표시됩니다."}</div>`;
   bindCo($("#soonMat"));
@@ -1253,7 +1257,7 @@ function renderCal() {
       <td><b>${esc(i.date.replaceAll("-", "."))}</b><div class="meta">${dday(i.date)}</div></td>
       <td><span class="tag ${CAL_KIND[i.kind]?.c || "gray"}" title="${esc(CAL_KIND[i.kind]?.hint || "")}">${esc(i.kind)}</span></td>
       <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y: "유가", K: "코스닥", N: "코넥스"}[i.corp_cls] || "비상장·기타"}</div></td>
-      <td class="wrap">${esc(i.label || "")}${i.issued ? `<div class="meta">발행 ${esc(i.issued.replaceAll("-", "."))}</div>` : ""}${i.check ? `<div class="meta" style="color:var(--warn)">⚠ ${esc(i.check)}${i.early_rcept ? ` ${DART_LINK({rcept_no: i.early_rcept}, "조기취득 공시")}` : ""}</div>` : ""}</td>
+      <td class="wrap">${esc(i.label || "")}${i.issued ? `<div class="meta">발행 ${esc(i.issued.replaceAll("-", "."))}</div>` : ""}${i.check ? ` <span class="tag tax" title="${esc(i.early_rcept ? "최근 1년 안에 만기 전 사채 취득(풋옵션 등) 공시가 있어 이미 상환됐을 수 있습니다" : "발행액 기준입니다. 풋옵션·전환으로 잔액이 줄었을 수 있습니다")}">${esc(i.check)}</span>${i.early_rcept ? ` ${DART_LINK({rcept_no: i.early_rcept}, "공시")}` : ""}` : ""}</td>
       <td class="num">${i.amount ? eok(i.amount) : "-"}</td>
       <td>${DART_LINK(i, "원문")}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">조건에 맞는 만기가 없습니다.</td></tr>`}</tbody>`;
   $$("#calTable th.sort").forEach(h => h.onclick = () => { const k = h.dataset.k;
