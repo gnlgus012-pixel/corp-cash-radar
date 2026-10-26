@@ -22,5 +22,15 @@ for e in evs[:10]:
     spec = C.CFG["details"]["specs"].get(e["category"])
     rec["reextract"] = C.extract_detail(rows, spec, corr) if spec and rows else None
     out["events"].append(rec)
+# 대주주 공시(주식담보 등) 원문 대조
+hs = C.load_json(C.CACHE_DIR / "holders.json", {}).get("docs", {})
+for rn, d in sorted(hs.items(), reverse=True):
+    if q in d.get("corp_name", "") and (not day or d.get("date") == day or d.get("kind") == "pledge"):
+        txt, err = C.dart_document(rn)
+        rows = [r for r in C.doc_rows(txt) if any(c.strip() for c in r)][:60] if txt else []
+        out.setdefault("holders", []).append({"rcept_no": rn, "kind": d.get("kind"), "date": d.get("date"),
+                                              "parsed": d.get("parsed"), "rows": rows})
+        if len(out["holders"]) >= 4:
+            break
 C.save_json(C.ROOT / "reports" / "event_check.json", out)
 print(len(evs), "events")
