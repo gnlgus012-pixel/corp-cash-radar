@@ -327,7 +327,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <div class="rates" id="rates"></div>
     <div class="grid g2" style="margin-bottom:14px">
       <div class="card">
-        <h3>대규모 자금 유입 예정 <span class="sub" style="font-weight:400">향후 30일 · 100억 이상 · 공시 원문의 실제 자금 일자</span></h3>
+        <h3>대규모 자금 유입 예정 <span class="sub" style="font-weight:400">향후 30일 · 유입 100억 이상 · 공시 원문의 실제 자금 일자</span></h3>
         <div class="list sched" id="bigIn"></div>
       </div>
       <div class="card">
@@ -838,14 +838,14 @@ function renderBrief() {
   sched.sort((a, b) => a.v.localeCompare(b.v) || (b.e.detail.amount || 0) - (a.e.detail.amount || 0));
   const wd = v => "일월화수목금토"[new Date(v + "T00:00:00").getDay()];
   // 대규모 자금 유입 예정 = 향후 30일 실제 자금 일자(납입·지급·양수도·매매 시작 등) 중 100억 이상
-  const big = sched.filter(x => (x.e.detail?.amount || 0) >= 1e10);
+  const big = sched.filter(x => x.e.type === "유입" && (x.e.detail?.amount || 0) >= 1e10);
   $("#bigIn").innerHTML = big.slice(0, 6).map(({e, k, v}) => `
     <div class="li click" data-co="${esc(e.corp_code)}">
       <div class="dt">${v.slice(5).replace("-", ".")}<div class="dd">${wd(v)}요일</div></div>
       <div><div class="t">${esc(e.corp_name)} <span class="tag gray">${esc(k)}</span>${e.category === "IPO 공모" ? ' <span class="tag in">IPO</span>' : ""}</div>
       <div class="d">${typeTag(e.type)} ${esc(e.category)} · ${esc(e.detail.amount_label)} <b>${amtTxt(e.detail)}</b></div></div>
       <div class="r">${DART_LINK(e)}</div>
-    </div>`).join("") || `<div class="empty">향후 30일 내 100억 이상 자금 일정이 없거나, 아직 공시 원문 수집 전입니다.</div>`;
+    </div>`).join("") || `<div class="empty">향후 30일 내 100억 이상 유입 일정이 없거나, 아직 공시 원문 수집 전입니다.</div>`;
   if (big.length > 6) $("#bigIn").insertAdjacentHTML("beforeend", `<div class="meta" style="padding-top:8px">외 ${big.length - 6}건 — 자금 동향 탭 '자금 일정 기준'에서 전체 확인</div>`);
   bindCo($("#bigIn"));
   const mats = (D.calendar?.items || []).filter(i => i.date >= t0 && i.date <= t30 && i.kind !== "대여금 회수")
