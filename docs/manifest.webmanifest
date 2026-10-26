@@ -1,0 +1,17 @@
+{
+  "name": "법인WM AI레이더",
+  "short_name": "법인WM AI레이더",
+  "description": "법인·대주주 자금 동향과 만기 일정을 매일 아침 정리하는 법인WM 영업 도구",
+  "lang": "ko",
+  "start_url": "./?source=app",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f1b2d",
+  "theme_color": "#0f1b2d",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
