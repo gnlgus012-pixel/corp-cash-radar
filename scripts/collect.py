@@ -1591,6 +1591,9 @@ def filter_ipo(events: list[dict]) -> list[dict]:
     return out
 
 
+IPO_DIAG = {"status": Counter(), "sample": None}
+
+
 def enrich_ipo(events: list[dict]) -> None:
     """IPO 공모: DART 증권신고서 주요정보(estkRs)로 납입일·모집총액·청약일. 접수번호별 캐시."""
     path = CACHE_DIR / "ipo.json"
@@ -1601,14 +1604,20 @@ def enrich_ipo(events: list[dict]) -> None:
             if e.get("category") != "IPO 공모" or e.get("detail"):
                 continue
             rn = e["rcept_no"]
-            if rn not in cache or ("exact" not in cache[rn] and STATS.get("ipo_api", 0) < 300):
+            if (rn not in cache or cache[rn].get("v") != 2) and STATS.get("ipo_api", 0) < 300:
                 STATS["ipo_api"] = STATS.get("ipo_api", 0) + 1
-                bgn = (parse_ymd(e["date"]) - timedelta(days=40)).strftime("%Y%m%d")
+                # IPO 는 최초 증권신고서가 확정 공시보다 1~3달 앞서 접수되는 경우가 많아 150일 전부터 조회
+                bgn = (parse_ymd(e["date"]) - timedelta(days=150)).strftime("%Y%m%d")
                 j = dart_get("estkRs.json", corp_code=e["corp_code"], bgn_de=bgn, end_de=e["date"])
+                IPO_DIAG["status"][j.get("status", "?")] += 1
+                if not IPO_DIAG["sample"] and j.get("status") == "000":
+                    IPO_DIAG["sample"] = {"keys": sorted({k for d in _walk_dicts(j) for k in d})[:90],
+                                          "groups": [g.get("title") for g in j.get("group", []) if isinstance(g, dict)],
+                                          "first_rows": [{k: v for k, v in d.items() if k not in ("corp_code",)} for d in list(_walk_dicts(j))[1:4]]}
                 rows = [d for d in _walk_dicts(j) if d.get("pymd") or d.get("slta")]
                 prev = sorted((d for d in rows if str(d.get("rcept_no", "")) <= rn), key=lambda d: str(d.get("rcept_no", "")))
                 pick = [d for d in rows if d.get("rcept_no") == rn] or prev[-1:] or rows[:1]
-                info = {"exact": any(d.get("rcept_no") == rn for d in pick)}
+                info = {"v": 2, "exact": any(d.get("rcept_no") == rn for d in pick)}
                 for d in pick:
                     for k in ("pymd", "sbd", "slta", "stksen", "slmth"):
                         if d.get(k) and k not in info:
@@ -1700,7 +1709,8 @@ def main() -> int:
     enrich_bond_dates(events)
     enrich_ipo(events)
     save_json(ROOT / "reports" / "dates_status.json", {"generated_at": now_kst().isoformat(timespec="minutes"),
-                                                      "by_category": dates_status(events), "bond_diag": BOND_DIAG})
+                                                      "by_category": dates_status(events), "bond_diag": BOND_DIAG,
+                                                      "ipo_diag": IPO_DIAG})
     ref = update_ref_assets(fins)
     companies = score_companies(universe, fins, events, ref)
     for c in companies:
