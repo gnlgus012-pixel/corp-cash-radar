@@ -1,0 +1,45 @@
+name: 공시 반영 점검 (수동)
+on:
+  workflow_dispatch:
+    inputs:
+      corp:
+        description: "법인명 일부"
+        required: true
+      day:
+        description: "공시일 YYYYMMDD (선택)"
+        default: ""
+permissions:
+  contents: write
+concurrency:
+  group: radar-update
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: 캐시 복원
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+          restore-keys: radar-cache-
+      - run: pip install -r requirements.txt && mkdir -p cache
+      - env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: python scripts/seal.py open docs/data/data.enc docs/data/data.json
+      - env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+        run: python scripts/event_check.py "${{ github.event.inputs.corp }}" "${{ github.event.inputs.day }}"
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/event_check.json
+          git diff --cached --quiet || { git commit -m "check: 공시 반영 점검"; git pull --rebase -X theirs origin main; git push; }
