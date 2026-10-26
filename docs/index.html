@@ -156,6 +156,8 @@ tbody tr.click:hover{background:var(--surface-2)}
 .li .t{font-weight:600}
 .li .d{font-size:12.5px;color:var(--ink-2);margin-top:2px}
 .li.click{cursor:pointer}
+.kpi.click{cursor:pointer;transition:border-color .15s}
+.kpi.click:hover{border-color:var(--accent)}
 .li .r{margin-left:auto;text-align:right;flex-shrink:0}
 
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
@@ -788,6 +790,22 @@ function showTab(t) {
 }
 
 /* ── 브리핑 ── */
+/* 브리핑 숫자 → 해당 목록으로 (필터를 맞춰서 이동) */
+function kpiGo(go) {
+  const pick = (sel, v) => { const b = $(`${sel} button[data-v="${v}"]`); if (b) b.click(); };
+  if (go === "in" || go === "out") {
+    pick("#f-basis", "disc"); pick("#f-period", "7"); pick("#f-type", go === "in" ? "유입" : "유출");
+    st.ev.cat = st.ev.mkt = st.ev.q = ""; $("#f-cat").value = ""; $("#f-mkt").value = ""; $("#f-q").value = "";
+    renderFlow(); showTab("flow");
+  } else {
+    const sc = st.sc;
+    sc.seg = go === "short" ? "short" : ""; sc.min = go === "hi" ? 70 : 0; sc.mkt = sc.q = ""; sc.fin = sc.watch = false;
+    sc.sort = "score"; sc.dir = -1;
+    $("#s-seg").value = sc.seg; $("#s-min").value = sc.min; $("#s-min-v").textContent = sc.min;
+    $("#s-mkt").value = ""; $("#s-q").value = ""; $("#s-fin").checked = false; $("#s-watch").checked = false;
+    renderScreen(); showTab("screen");
+  }
+}
 function renderBrief() {
   const d7 = daysAgo(7), d14 = daysAgo(14);
   const e7 = D.events.filter(e => e.date >= d7);
@@ -795,11 +813,12 @@ function renderBrief() {
   const hi = D.companies.filter(c => c.score >= 70).length;
   $("#brief-sub").textContent = `최근 ${D.meta.lookback_days}일 자금 공시 ${D.events.length.toLocaleString()}건 · 분석 법인 ${D.companies.length.toLocaleString()}개사`;
   $("#kpis").innerHTML = [
-    {c:"in", l:"자금 유입 공시", v:inN, u:"건", n:"최근 7일 · 증자·사채·매각"},
-    {c:"out", l:"자금 유출 공시", v:outN, u:"건", n:"최근 7일 · 자사주·투자·인수"},
-    {c:"", l:"고득점 여유자금 법인", v:hi, u:"개사", n:"점수 70점 이상"},
-    {c:"", l:"단기 자금 법인", v:D.companies.filter(c=>c.segment==="short").length, u:"개사", n:"최근 90일 자금 유입 공시"},
-  ].map(k => `<div class="card kpi ${k.c}"><div class="lbl">${k.l}</div><div class="val">${k.v.toLocaleString()}<small>${k.u}</small></div><div class="note">${k.n}</div></div>`).join("");
+    {c:"in", l:"자금 유입 공시", v:inN, u:"건", n:"최근 7일 · 증자·사채·매각", go:"in"},
+    {c:"out", l:"자금 유출 공시", v:outN, u:"건", n:"최근 7일 · 자사주·투자·인수", go:"out"},
+    {c:"", l:"고득점 여유자금 법인", v:hi, u:"개사", n:"점수 70점 이상", go:"hi"},
+    {c:"", l:"단기 자금 법인", v:D.companies.filter(c=>c.segment==="short").length, u:"개사", n:"최근 90일 자금 유입 공시", go:"short"},
+  ].map(k => `<div class="card kpi ${k.c} click" data-go="${k.go}" title="눌러서 목록 보기"><div class="lbl">${k.l} <span class="meta">›</span></div><div class="val">${k.v.toLocaleString()}<small>${k.u}</small></div><div class="note">${k.n}</div></div>`).join("");
+  $$("#kpis [data-go]").forEach(el => el.onclick = () => kpiGo(el.dataset.go));
 
   $("#rates").innerHTML = (D.rates || []).filter(r => r.brief !== false && (r.brief || !r.key)).map(r => {
     const diff = r.prev == null ? null : Math.round((r.latest - r.prev) * 100);
