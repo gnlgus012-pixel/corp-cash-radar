@@ -1669,6 +1669,9 @@ def slim_event(e: dict) -> dict:
     if "detail" in o:
         o["detail"] = {k: v for k, v in o["detail"].items()
                        if k not in ("v", "chain_checked", "contact") and v not in (None, False, [], "")}
+        if o["detail"].get("texts"):  # 표 머리글이 값으로 잘못 잡힌 경우(예: 발행대상 '회사 또는 최대주주와의 관계') 제외
+            o["detail"]["texts"] = [t for t in o["detail"]["texts"]
+                                    if not (isinstance(t[1], str) and re.search(r"관계$|^비고$|선정경위|대상자명|해당사항", re.sub(r"\s", "", t[1])))]
         pay = est_dividend_pay(e)
         if pay:  # 화면의 '자금 일정'에서 실제 지급일 대신 쓰는 추정치 (표시에 '추정' 명시)
             o["detail"]["dates"] = list(o["detail"].get("dates") or []) + [["지급예정일(추정)", pay]]
