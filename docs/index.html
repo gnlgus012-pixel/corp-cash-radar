@@ -698,6 +698,7 @@ async function showNotices(force) {
                  $("#noticeOk").onclick = close; $("#noticeToday").hidden = true; }
     return;
   }
+  $("#noticeOk").textContent = "확인";
   $("#noticeTitle").innerHTML = '업데이트 소식 <span style="font-size:12px;font-weight:400;color:var(--ink-3)">최근 1주일</span>';
   let skip = "", seen = "";
   try { skip = localStorage.getItem(NOTICE_SKIP) || ""; seen = localStorage.getItem(NOTICE_SEEN) || ""; } catch(e) {}
@@ -722,21 +723,52 @@ let INSTALL_EVT = null;
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); INSTALL_EVT = e; });
 const IS_APP = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
 if (IS_APP) { const b = document.getElementById("installBtn"); if (b) b.hidden = true; }
-window.showInstall = async () => {
-  if (INSTALL_EVT) { INSTALL_EVT.prompt(); try { await INSTALL_EVT.userChoice; } catch(e) {} INSTALL_EVT = null; return; }
-  const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-  $("#noticeBody").innerHTML = `<div class="ent"><div class="nd"><b>법인WM AI레이더 앱으로 설치</b></div>
-    <ul>${ios ? `<li>사파리에서 이 사이트를 연 상태로 아래 <b>공유 버튼(□↑)</b>을 누르세요.</li><li><b>홈 화면에 추가</b> → 오른쪽 위 <b>추가</b>.</li><li>카카오톡·네이버 앱 안에서 열었다면 먼저 '사파리로 열기'를 하세요.</li>`
-      : `<li>크롬에서 오른쪽 위 <b>⋮ 메뉴</b> → <b>앱 설치</b> 또는 <b>홈 화면에 추가</b>.</li><li>삼성 인터넷은 <b>≡ 메뉴</b> → <b>현재 페이지 추가</b> → <b>홈 화면</b>.</li><li>PC 크롬·엣지는 주소창 오른쪽 <b>설치 아이콘</b>을 누르세요.</li>`}
-      <li>설치 후 아이콘을 누르면 주소창 없이 앱처럼 열리고, 비밀번호는 '이 기기에서 기억'을 켜 두면 다음부터 바로 열립니다.</li></ul></div>`;
+const UA = navigator.userAgent;
+const IN_KAKAO = /KAKAOTALK/i.test(UA), IS_IOS = /iPhone|iPad|iPod/i.test(UA), IS_ANDROID = /Android/i.test(UA);
+const IN_APPVIEW = IN_KAKAO || /NAVER\(inapp|Line\/|Instagram|FBAN|FBAV|; wv\)/i.test(UA);
+const pageUrl = () => location.href.split("#")[0].replace(/[?&]install=1/, "");
+function openOutside() {
+  // 카카오톡 등 앱 안 브라우저에서는 설치가 막혀 있어 기본 브라우저(사파리·크롬)로 넘긴다
+  const u = pageUrl() + (pageUrl().includes("?") ? "&" : "?") + "install=1";
+  if (IN_KAKAO) { location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(u); return true; }
+  if (IS_ANDROID) { location.href = "intent://" + u.replace(/^https?:\/\//, "") + "#Intent;scheme=https;package=com.android.chrome;end"; return true; }
+  return false;
+}
+function installModal(html, action) {
   $("#noticeTitle").textContent = "앱으로 설치";
+  $("#noticeBody").innerHTML = html;
   $("#notice").hidden = false; $("#noticeToday").hidden = true;
-  $("#noticeOk").onclick = () => { $("#notice").hidden = true; };
+  const ok = $("#noticeOk");
+  ok.textContent = action ? "지금 설치" : "확인";
+  ok.onclick = async () => { $("#notice").hidden = true; ok.textContent = "확인"; if (action) await action(); };
+}
+window.showInstall = async () => {
+  if (IN_APPVIEW && openOutside()) return;           // 카톡 → 기본 브라우저로 열고, 거기서 바로 설치 창
+  if (INSTALL_EVT) { INSTALL_EVT.prompt(); try { await INSTALL_EVT.userChoice; } catch(e) {} INSTALL_EVT = null; return; }
+  if (IS_IOS) {
+    installModal(`<div class="ent"><ul><li>아이폰은 애플 정책상 버튼 한 번으로 설치할 수 없어요.</li>
+      <li>사파리 아래쪽 <b>공유 버튼(□↑)</b> → <b>홈 화면에 추가</b> → <b>추가</b>.</li>
+      <li>설치 후 아이콘으로 열면 주소창 없이 앱처럼 열립니다.</li></ul></div>`);
+  } else {
+    installModal(`<div class="ent"><ul><li>브라우저 메뉴(⋮ 또는 ≡)에서 <b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 누르세요.</li>
+      <li>PC 크롬·엣지는 주소창 오른쪽 <b>설치 아이콘</b>.</li></ul></div>`);
+  }
 };
+// 카톡에서 넘어온 경우(?install=1): 로그인 후 '지금 설치' 버튼으로 바로 설치 창 (브라우저 정책상 버튼 한 번은 눌러야 함)
+const PENDING_INSTALL = /[?&]install=1/.test(location.search) && !IS_APP;
+if (PENDING_INSTALL) history.replaceState(null, "", pageUrl() + location.hash);
+function afterLoginInstall() {
+  if (!PENDING_INSTALL) return false;
+  if (IS_IOS) { showInstall(); return true; }
+  const ask = () => installModal(`<div class="ent"><ul><li>이 브라우저에서 <b>법인WM AI레이더</b>를 홈 화면 앱으로 설치합니다.</li></ul></div>`,
+    async () => { if (INSTALL_EVT) { INSTALL_EVT.prompt(); try { await INSTALL_EVT.userChoice; } catch(e) {} INSTALL_EVT = null; } else showInstall(); });
+  if (INSTALL_EVT) ask(); else window.addEventListener("beforeinstallprompt", () => setTimeout(ask, 200), {once: true});
+  return true;
+}
 // 홈 화면 앱(PWA): 서비스워커 등록 (지원 안 하는 브라우저는 그냥 웹으로 동작)
 if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js").catch(() => {}); } catch(e) {} }
 window.radarLock = () => { try { localStorage.removeItem(KEY_STORE); } catch(e) {} location.reload(); };
-load().then(d => { init(d); logVisit(); showNotices(); }).catch(e => {
+load().then(d => { init(d); logVisit(); if (!afterLoginInstall()) showNotices(); }).catch(e => {
   $("main").innerHTML = `<div class="card empty">데이터를 불러오지 못했습니다 (${esc(e.message)}).<br>GitHub Actions 첫 실행이 끝났는지 확인하세요.</div>`;
 });
 
