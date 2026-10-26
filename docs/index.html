@@ -112,6 +112,12 @@ tbody tr.click:hover{background:var(--surface-2)}
 .tw table td,.tw table th{white-space:nowrap}
 .tw td.wrap{white-space:normal;min-width:220px}
 
+.tag.k-bond{background:#e8f0ff;color:#1f5bd1}
+.tag.k-mezz{background:#f1e9ff;color:#6b3fd4}
+.tag.k-pledge{background:var(--warn-bg);color:var(--warn)}
+.tag.k-loan{background:var(--in-bg);color:var(--in)}
+:root[data-theme="dark"] .tag.k-bond{background:#17264a;color:#8fb4ff}
+:root[data-theme="dark"] .tag.k-mezz{background:#261a44;color:#c3a6ff}
 .tag.cash{background:var(--in-bg);color:var(--in)}
 .tag.tax{background:var(--warn-bg);color:var(--warn)}
 .tag.loan{background:var(--sample-bg);color:var(--sample)}
@@ -226,6 +232,9 @@ tbody tr.click:hover{background:var(--surface-2)}
 .points li{margin:4px 0}
 .chartbox{position:relative}
 .chartbox svg{display:block;width:100%;height:auto}
+.regionbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin:0 0 10px}
+.regionbar select{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:13px}
+.regionbar.on select{border-color:var(--accent);color:var(--accent);font-weight:600}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--ink-2);margin-bottom:6px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 @media (max-width:640px){.hide-m{display:none}.search input{width:150px}}
@@ -295,6 +304,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <button data-tab="brief" class="on">브리핑</button>
     <button data-tab="flow">자금 동향</button>
     <button data-tab="owner">대주주(개인)</button>
+    <button data-tab="cal">만기 캘린더</button>
     <button data-tab="screen">여유자금 법인</button>
     <button data-tab="prod">자금 성격별</button>
     <button data-tab="rate">금리</button>
@@ -303,6 +313,10 @@ tbody tr.click:hover{background:var(--surface-2)}
 </header>
 
 <main>
+  <div class="regionbar" id="regionBar" title="본점 소재지 기준. 모든 탭(브리핑·자금 동향·대주주·여유자금 법인·자금 성격별)에 적용되고 이 기기에 기억됩니다">
+    <span>담당 지역</span><select id="rg-sido"><option value="">전국</option></select><select id="rg-sgg" hidden><option value="">전체</option></select>
+    <span class="meta" id="rg-note"></span>
+  </div>
   <div id="banners"></div>
 
   <!-- 브리핑 -->
@@ -314,6 +328,16 @@ tbody tr.click:hover{background:var(--surface-2)}
     <div class="card" style="margin-bottom:14px">
       <h3>다가오는 자금 일정 <span class="sub" style="font-weight:400">공시 원문 기준 · 향후 30일 납입·배당지급·양수도·자사주 매매 시작일 (같은 건은 최신 정정 기준)</span></h3>
       <div class="list sched" id="sched"></div>
+    </div>
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card">
+        <h3>대규모 자금 유입 예정 <span class="sub" style="font-weight:400">향후 30일 납입 · IPO·증자·사채 300억 이상</span></h3>
+        <div class="list sched" id="bigIn"></div>
+      </div>
+      <div class="card">
+        <h3>다가오는 만기 <span class="sub" style="font-weight:400">향후 30일 · 회사채·메자닌·주식담보 · 금액순</span></h3>
+        <div class="list sched" id="soonMat"></div>
+      </div>
     </div>
     <div class="grid g2">
       <div class="card">
@@ -387,6 +411,33 @@ tbody tr.click:hover{background:var(--surface-2)}
     </div>
     <div class="tw"><table id="owTable"></table></div>
     <p class="meta" id="ow-foot" style="margin-top:8px"></p>
+  </section>
+
+  <!-- 만기 캘린더 -->
+  <section class="tab" id="t-cal">
+    <h2>만기·상환 캘린더</h2>
+    <p class="sub">공모 회사채·메자닌(CB·BW·EB) 만기, 대주주 주식담보대출 만기, 금전대여 회수일. 만기 전 차환·상환 자금 준비, 상환 후 여유자금 운용 시점을 미리 잡습니다.
+      <br><span class="meta">발행 당시 기준이라 조기상환·매입소각·전환으로 줄어든 잔액은 반영되지 않습니다. 사모 회사채·CP·전단채는 DART에 없어 제외됩니다.</span></p>
+    <div class="grid g4" id="cal-kpis" style="margin-bottom:14px"></div>
+    <div class="card" style="margin-bottom:14px">
+      <h3>월별 만기 금액 <span class="sub" style="font-weight:400">향후 12개월</span></h3>
+      <div class="legend" id="cal-legend"></div>
+      <div class="chartbox" id="calChart"></div>
+    </div>
+    <div class="filters">
+      <div class="seg-btns" id="cal-range">
+        <button data-v="past30">지난 30일</button><button data-v="n30">향후 30일</button><button data-v="n90" class="on">향후 90일</button><button data-v="n180">6개월</button><button data-v="n365">1년</button>
+      </div>
+      <div class="seg-btns" id="cal-kind">
+        <button data-v="" class="on">전체</button><button data-v="회사채 만기">회사채</button><button data-v="메자닌 만기">메자닌</button><button data-v="주식담보 만기">주식담보</button><button data-v="대여금 회수">대여금 회수</button>
+      </div>
+      <select id="cal-min"><option value="0">모든 금액</option><option value="1000000000" selected>10억 이상</option><option value="10000000000">100억 이상</option><option value="50000000000">500억 이상</option></select>
+      <select id="cal-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="E">비상장</option></select>
+      <input type="text" id="cal-q" placeholder="법인명">
+      <span class="count" id="cal-count"></span>
+    </div>
+    <div class="tw"><table id="calTable"></table></div>
+    <p class="meta" id="cal-foot" style="margin-top:8px"></p>
   </section>
 
   <!-- 스크리너 -->
@@ -522,6 +573,7 @@ const st = {
   sc: {mkt: "", seg: "", min: 0, fin: false, watch: false, q: "", sort: "score", dir: -1},
   topic: 0,
   ow: {period: 30, cat: "", min: 1e8, mkt: "", q: "", sort: "date", dir: -1},
+  cal: {range: "n90", kind: "", min: 1e9, mkt: "", q: "", sort: "date", dir: 1},
 };
 
 /* ── 테마 ── */
@@ -664,8 +716,54 @@ load().then(d => { init(d); logVisit(); showNotices(); }).catch(e => {
   $("main").innerHTML = `<div class="card empty">데이터를 불러오지 못했습니다 (${esc(e.message)}).<br>GitHub Actions 첫 실행이 끝났는지 확인하세요.</div>`;
 });
 
+/* ── 담당 지역 (본점 소재지) ── */
+const SIDO = [["서울", /^서울/], ["부산", /^부산/], ["대구", /^대구/], ["인천", /^인천/], ["광주", /^(광주|전남광주)/], ["대전", /^대전/],
+  ["울산", /^울산/], ["세종", /^세종/], ["경기", /^경기/], ["강원", /^강원/], ["충북", /^(충북|충청북)/], ["충남", /^(충남|충청남)/],
+  ["전북", /^(전북|전라북)/], ["전남", /^(전남|전라남)/], ["경북", /^(경북|경상북)/], ["경남", /^(경남|경상남)/], ["제주", /^제주/]];
+function regionOf(addr) {
+  const a = String(addr || "").replace(/&nbsp;?/g, " ").trim();
+  if (!a) return null;
+  const hit = SIDO.find(([, rx]) => rx.test(a));
+  if (!hit) return {sido: "해외·기타", sgg: ""};
+  const rest = a.replace(/^\S*?(특별자치시|특별자치도|특별시|광역시|통합특별시|도|시)(?=\s|[가-힣])/, "").replace(/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)(?=\s)/, "").trim();
+  const m = rest.match(/^([가-힣]{1,6}?(시|군|구))(?=\s|[가-힣]|$)/);
+  return {sido: hit[0], sgg: hit[0] === "세종" ? "" : (m ? m[1] : "")};
+}
+const RG_KEY = "radar-region";
+function loadRegion() { try { return JSON.parse(localStorage.getItem(RG_KEY) || "null") || {}; } catch(e) { return {}; } }
+function applyRegion(data) {
+  const R = loadRegion();
+  const reg = {};
+  data.companies.forEach(c => { reg[c.corp_code] = regionOf(c.info?.addr); });
+  // 선택 목록은 전체 데이터 기준
+  const cnt = {};
+  Object.values(reg).forEach(r => { if (!r) return; (cnt[r.sido] ??= {n: 0, sgg: {}}).n++; if (r.sgg) cnt[r.sido].sgg[r.sgg] = (cnt[r.sido].sgg[r.sgg] || 0) + 1; });
+  const order = [...SIDO.map(x => x[0]), "해외·기타"].filter(k => cnt[k]);
+  $("#rg-sido").innerHTML = `<option value="">전국</option>` + order.map(k => `<option value="${k}">${k} (${cnt[k].n})</option>`).join("");
+  $("#rg-sido").value = R.sido || "";
+  const fillSgg = sido => {
+    const g = cnt[sido]?.sgg || {};
+    const ks = Object.keys(g).sort((a, b) => g[b] - g[a] || a.localeCompare(b, "ko"));
+    $("#rg-sgg").innerHTML = `<option value="">${sido} 전체</option>` + ks.map(k => `<option value="${k}">${k} (${g[k]})</option>`).join("");
+    $("#rg-sgg").hidden = !sido || !ks.length;
+  };
+  fillSgg(R.sido);
+  $("#rg-sgg").value = R.sgg || "";
+  const save = v => { try { localStorage.setItem(RG_KEY, JSON.stringify(v)); } catch(e) {} location.reload(); };
+  $("#rg-sido").onchange = e => save({sido: e.target.value, sgg: ""});
+  $("#rg-sgg").onchange = e => save({sido: R.sido, sgg: e.target.value});
+  if (!R.sido) return data;
+  const ok = code => { const r = reg[code]; return !!r && r.sido === R.sido && (!R.sgg || r.sgg === R.sgg); };
+  const out = {...data, companies: data.companies.filter(c => ok(c.corp_code)), events: data.events.filter(e => ok(e.corp_code))};
+  if (data.holders) out.holders = {...data.holders, items: data.holders.items.filter(i => ok(i.corp_code))};
+  if (data.calendar) out.calendar = {...data.calendar, items: data.calendar.items.filter(i => ok(i.corp_code))};
+  $("#regionBar").classList.add("on");
+  $("#rg-note").textContent = `${R.sgg ? R.sido + " " + R.sgg : R.sido} 법인 ${out.companies.length.toLocaleString()}개사만 표시 · 비상장 등 주소 미확보 법인은 제외`;
+  return out;
+}
+
 function init(data) {
-  D = data;
+  D = applyRegion(data);
   D.events.forEach(e => EV_BY_ID[e.rcept_no] = e);
   D.companies.forEach(c => CO_BY_CODE[c.corp_code] = c);
   const g = new Date(D.meta.generated_at);
@@ -676,7 +774,7 @@ function init(data) {
   if (D.meta.warnings?.length) b += `<details class="banner warn"><summary>수집 경고 ${D.meta.warnings.length}건</summary><ul>${D.meta.warnings.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>`;
   $("#banners").innerHTML = b;
 
-  renderBrief(); initFlow(); initOwner(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
+  renderBrief(); initFlow(); initOwner(); initCal(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
   $$("#nav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
   const h = location.hash.slice(1);
   if (h.startsWith("c=")) openCompany(h.slice(2)); else if (/^[a-z]+$/.test(h)) showTab(h);
@@ -688,6 +786,7 @@ function showTab(t) {
   $$("section.tab").forEach(s => s.classList.toggle("on", s.id === "t-" + t));
   history.replaceState(null, "", "#" + t);
   if (t === "flow") drawFlowChart();
+  if (t === "cal") drawCalChart();
   if (t === "rate") drawRateCharts();
   window.scrollTo({top: 0});
 }
@@ -751,6 +850,30 @@ function renderBrief() {
     </div>`).join("") || `<div class="empty">향후 30일 내 예정된 일정이 없거나, 아직 공시 원문 수집 전입니다.</div>`;
   if (sched.length > 12) $("#sched").insertAdjacentHTML("beforeend", `<div class="meta" style="padding-top:8px">외 ${sched.length - 12}건 — 자금 동향 탭에서 전체 확인</div>`);
   bindCo($("#sched"));
+
+  // 대규모 자금 유입 예정: 향후 30일 납입일 · 300억 이상 (IPO·유상증자·메자닌·회사채·신종자본증권)
+  const BIG_CATS = new Set(["IPO 공모", "유상증자", "메자닌 발행", "회사채 발행", "신종자본증권 발행"]);
+  const big = D.events.filter(e => BIG_CATS.has(e.category) && !e.detail?.old && !e.detail?.dup && (e.detail?.amount || 0) >= 3e10)
+    .map(e => ({e, v: Object.fromEntries(e.detail.dates || []).납입일})).filter(x => x.v && x.v >= t0 && x.v <= t30)
+    .sort((a, b) => a.v.localeCompare(b.v) || b.e.detail.amount - a.e.detail.amount);
+  const seenB = new Set();
+  const bigU = big.filter(x => { const k = x.e.corp_code + x.e.category + x.v; if (seenB.has(k)) return false; seenB.add(k); return true; });
+  $("#bigIn").innerHTML = bigU.slice(0, 8).map(({e, v}) => `
+    <div class="li click" data-co="${esc(e.corp_code)}">
+      <div class="dt">${v.slice(5).replace("-", ".")}<div class="dd">${wd(v)}요일</div></div>
+      <div><div class="t">${esc(e.corp_name)} ${e.category === "IPO 공모" ? '<span class="tag in">IPO</span>' : ""}</div>
+      <div class="d">${esc(e.category)} · ${esc(e.detail.amount_label)} <b>${amtTxt(e.detail)}</b></div></div>
+      <div class="r">${DART_LINK(e)}</div></div>`).join("") || `<div class="empty">향후 30일 내 300억 이상 납입 예정 건이 없습니다.</div>`;
+  bindCo($("#bigIn"));
+  const mats = (D.calendar?.items || []).filter(i => i.date >= t0 && i.date <= t30 && i.kind !== "대여금 회수")
+    .sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 8);
+  $("#soonMat").innerHTML = mats.map(i => `
+    <div class="li click" data-co="${esc(i.corp_code)}">
+      <div class="dt">${i.date.slice(5).replace("-", ".")}<div class="dd">${dday(i.date)}</div></div>
+      <div><div class="t">${esc(i.corp_name)} <span class="tag ${CAL_KIND[i.kind]?.c || "gray"}">${esc(i.kind)}</span></div>
+      <div class="d">${esc(i.label || "")} · <b>${eok(i.amount)}</b></div></div>
+      <div class="r">${DART_LINK(i)}</div></div>`).join("") || `<div class="empty">${D.calendar ? "향후 30일 내 만기가 없습니다." : "만기 데이터는 다음 갱신부터 표시됩니다."}</div>`;
+  bindCo($("#soonMat"));
 
   const news = (D.topics || []).flatMap(t => t.items.map(i => ({...i, kw: t.keyword})));
   const uniq = [...new Map(news.map(n => [n.url, n])).values()].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -998,6 +1121,92 @@ function renderOwner() {
     renderOwner();
   });
   bindCo($("#owTable"));
+}
+
+/* ── 만기 캘린더 ── */
+const CAL_KIND = {"회사채 만기": {c: "k-bond", col: "#1f6feb", hint: "만기 상환 자금 준비 — 차환 발행·상환 전 대기자금"},
+  "메자닌 만기": {c: "k-mezz", col: "#7c4ddb", hint: "미전환 잔액 상환 — 상환 재원 준비"},
+  "주식담보 만기": {c: "k-pledge", col: "#c08a00", hint: "대주주 개인 대출 만기 — 대환·연장 수요"},
+  "대여금 회수": {c: "k-loan", col: "#0e9f6e", hint: "빌려준 돈이 돌아오는 날 — 자금 유입"}};
+const CAL_COLS = {
+  date: {l: "만기일", v: i => i.date, def: 1}, kind: {l: "유형", v: i => i.kind, def: 1},
+  name: {l: "법인", v: i => i.corp_name, def: 1}, label: {l: "내용", v: i => i.label, def: 1},
+  amount: {l: "금액", v: i => i.amount || null, def: -1},
+};
+const dday = d => { const t = new Date(todayIso() + "T00:00:00"), x = new Date(d + "T00:00:00"); const n = Math.round((x - t) / 864e5); return n === 0 ? "D-day" : n > 0 ? `D-${n}` : `${-n}일 지남`; };
+function calRange(r) {
+  const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`; };
+  return {past30: [d(-30), d(-1)], n30: [d(0), d(30)], n90: [d(0), d(90)], n180: [d(0), d(180)], n365: [d(0), d(366)]}[r];
+}
+function initCal() {
+  const C = D.calendar;
+  if (!C) { $("#t-cal").insertAdjacentHTML("beforeend", `<div class="card empty">만기 데이터는 다음 갱신부터 표시됩니다.</div>`); return; }
+  const o = st.cal;
+  const seg = (id, key) => $$(`#${id} button`).forEach(b => b.onclick = () => {
+    $$(`#${id} button`).forEach(x => x.classList.toggle("on", x === b)); o[key] = b.dataset.v; renderCal();
+  });
+  seg("cal-range", "range"); seg("cal-kind", "kind");
+  $("#cal-min").onchange = e => { o.min = +e.target.value; renderCal(); };
+  $("#cal-mkt").onchange = e => { o.mkt = e.target.value; renderCal(); };
+  $("#cal-q").oninput = e => { o.q = e.target.value.replace(/\s/g, ""); renderCal(); };
+  const sum = (arr) => arr.reduce((a, i) => a + (i.amount || 0), 0);
+  const [a30, b30] = calRange("n30"), [a90, b90] = calRange("n90");
+  const k = (kind, a, b) => C.items.filter(i => i.kind === kind && i.date >= a && i.date <= b);
+  $("#cal-kpis").innerHTML = [
+    {l: "회사채 만기", v: eok(sum(k("회사채 만기", a30, b30))), n: `향후 30일 · ${k("회사채 만기", a30, b30).length}건 · 90일 ${eok(sum(k("회사채 만기", a90, b90)))}`},
+    {l: "메자닌 만기", v: eok(sum(k("메자닌 만기", a30, b30))), n: `향후 30일 · ${k("메자닌 만기", a30, b30).length}건 · 발행액 기준`},
+    {l: "대주주 주식담보 만기", v: eok(sum(k("주식담보 만기", a90, b90))), n: `향후 90일 · ${k("주식담보 만기", a90, b90).length}건`},
+    {l: "대여금 회수", v: eok(sum(k("대여금 회수", a30, b30))), n: `향후 30일 · ${k("대여금 회수", a30, b30).length}건`, c: "in"},
+  ].map(x => `<div class="card kpi ${x.c || ""}"><div class="lbl">${x.l}</div><div class="val">${x.v}</div><div class="note">${esc(x.n)}</div></div>`).join("");
+  $("#cal-legend").innerHTML = Object.entries(CAL_KIND).map(([k2, v]) => `<span><i style="background:${v.col}"></i>${k2.replace(" 만기", "")}</span>`).join("");
+  const sf = C.scan_from || {};
+  $("#cal-foot").textContent = `수집 범위: 회사채 ${sf.bonds ? sf.bonds.slice(0, 4) + "." + sf.bonds.slice(4, 6) : "-"} 이후 공모 · 메자닌 ${sf.mezz ? sf.mezz.slice(0, 4) + "." + sf.mezz.slice(4, 6) : "-"} 이후 발행결정` +
+    (C.pending ? ` · 메자닌 발행조건 확인 대기 ${C.pending.toLocaleString()}건 (매일 이어서 처리)` : "");
+  renderCal();
+}
+function renderCal() {
+  const o = st.cal, [a, b] = calRange(o.range);
+  const rows = D.calendar.items.filter(i => i.date >= a && i.date <= b && (!o.kind || i.kind === o.kind) &&
+    (o.min === 0 || (i.amount || 0) >= o.min) && (!o.mkt || (o.mkt === "E" ? !["Y", "K"].includes(i.corp_cls) : i.corp_cls === o.mkt)) &&
+    (!o.q || i.corp_name.replace(/\s/g, "").includes(o.q)));
+  const sv = CAL_COLS[o.sort].v;
+  rows.sort((x, y) => { const va = sv(x), vb = sv(y);
+    if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+    return (typeof va === "string" ? va.localeCompare(vb, "ko") : va - vb) * o.dir; });
+  const th = k => `<th class="sort ${k === "amount" ? "num" : ""} ${o.sort === k ? (o.dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${CAL_COLS[k].l}</th>`;
+  const LIMIT = 400;
+  $("#cal-count").textContent = `${rows.length.toLocaleString()}건 · ${eok(rows.reduce((s2, i) => s2 + (i.amount || 0), 0))}`;
+  $("#calTable").innerHTML = `<thead><tr>${th("date")}${th("kind")}${th("name")}${th("label")}${th("amount")}<th>원문</th></tr></thead><tbody>${
+    rows.slice(0, LIMIT).map(i => `<tr class="${CO_BY_CODE[i.corp_code] ? "click" : ""}" data-co="${esc(i.corp_code)}">
+      <td><b>${esc(i.date.replaceAll("-", "."))}</b><div class="meta">${dday(i.date)}</div></td>
+      <td><span class="tag ${CAL_KIND[i.kind]?.c || "gray"}" title="${esc(CAL_KIND[i.kind]?.hint || "")}">${esc(i.kind)}</span></td>
+      <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y: "유가", K: "코스닥", N: "코넥스"}[i.corp_cls] || "비상장·기타"}</div></td>
+      <td class="wrap">${esc(i.label || "")}${i.issued ? `<div class="meta">발행 ${esc(i.issued.replaceAll("-", "."))}</div>` : ""}</td>
+      <td class="num">${i.amount ? eok(i.amount) : "-"}</td>
+      <td>${DART_LINK(i, "원문")}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">조건에 맞는 만기가 없습니다.</td></tr>`}</tbody>`;
+  $$("#calTable th.sort").forEach(h => h.onclick = () => { const k = h.dataset.k;
+    if (o.sort === k) o.dir *= -1; else { o.sort = k; o.dir = CAL_COLS[k].def; } renderCal(); });
+  bindCo($("#calTable"));
+}
+function drawCalChart() {
+  if (!D.calendar || !$("#calChart")) return;
+  const months = [], now = new Date();
+  for (let m = 0; m < 12; m++) { const d = new Date(now.getFullYear(), now.getMonth() + m, 1); months.push({k: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, lbl: `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}`, v: {}}); }
+  D.calendar.items.forEach(i => { const m = months.find(x => i.date.startsWith(x.k)); if (m && i.amount) m.v[i.kind] = (m.v[i.kind] || 0) + i.amount; });
+  const W = Math.max(300, Math.round($("#calChart").clientWidth || 600)), H = 220, L = 60, R = 6, T = 8, B = 24;
+  const tot = m => Object.values(m.v).reduce((a, x) => a + x, 0);
+  const max = Math.max(1, ...months.map(tot));
+  const y = v => T + (H - T - B) * (1 - v / max);
+  const gw = (W - L - R) / 12, bw = Math.min(28, gw * 0.6);
+  let s2 = "";
+  [0, 0.5, 1].forEach(f => { const v = max * f; s2 += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink-3)">${eok(v)}</text>`; });
+  months.forEach((m, i) => {
+    let base = 0; const x = L + gw * i + (gw - bw) / 2;
+    Object.keys(CAL_KIND).forEach(k2 => { const v = m.v[k2] || 0; if (!v) return;
+      s2 += `<rect x="${x}" y="${y(base + v)}" width="${bw}" height="${y(base) - y(base + v)}" fill="${CAL_KIND[k2].col}"><title>${m.lbl}월 ${k2} ${eok(v)}</title></rect>`; base += v; });
+    s2 += `<text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="var(--ink-3)">${m.lbl}</text>`;
+  });
+  $("#calChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="월별 만기 금액">${s2}</svg>`;
 }
 
 /* ── 스크리너 ── */

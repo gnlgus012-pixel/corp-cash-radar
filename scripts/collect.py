@@ -1568,6 +1568,68 @@ def dates_status(events: list[dict]) -> dict:
     return out
 
 
+def filter_ipo(events: list[dict]) -> list[dict]:
+    """증권신고서(지분증권) 중 신규 상장 공모만 남긴다.
+    - 같은 회사가 앞뒤 60일 안에 유상증자결정을 냈으면 상장사 공모 유상증자 → 제외 (유상증자로 이미 잡힘)
+    - 스팩(기업인수목적회사)은 공모자금이 신탁에 묶여 운용 대상이 아니라 제외"""
+    rights = {}
+    for e in events:
+        if e["category"] == "유상증자":
+            rights.setdefault(e["corp_code"], []).append(parse_ymd(e["date"]))
+    out, dropped = [], Counter()
+    for e in events:
+        if e["category"] == "IPO 공모":
+            d = parse_ymd(e["date"])
+            if any(abs((d - x).days) <= 60 for x in rights.get(e["corp_code"], [])):
+                dropped["상장사 유상증자"] += 1
+                continue
+            if re.search(r"스팩|기업인수목적|SPAC", e["corp_name"], re.I):
+                dropped["스팩"] += 1
+                continue
+        out.append(e)
+    STATS["ipo_filter"] = {"kept": sum(1 for e in out if e["category"] == "IPO 공모"), **dropped}
+    return out
+
+
+def enrich_ipo(events: list[dict]) -> None:
+    """IPO 공모: DART 증권신고서 주요정보(estkRs)로 납입일·모집총액·청약일. 접수번호별 캐시."""
+    path = CACHE_DIR / "ipo.json"
+    cache = load_json(path, {})
+    got = 0
+    try:
+        for e in events:
+            if e.get("category") != "IPO 공모" or e.get("detail"):
+                continue
+            rn = e["rcept_no"]
+            if rn not in cache or ("exact" not in cache[rn] and STATS.get("ipo_api", 0) < 300):
+                STATS["ipo_api"] = STATS.get("ipo_api", 0) + 1
+                bgn = (parse_ymd(e["date"]) - timedelta(days=40)).strftime("%Y%m%d")
+                j = dart_get("estkRs.json", corp_code=e["corp_code"], bgn_de=bgn, end_de=e["date"])
+                rows = [d for d in _walk_dicts(j) if d.get("pymd") or d.get("slta")]
+                prev = sorted((d for d in rows if str(d.get("rcept_no", "")) <= rn), key=lambda d: str(d.get("rcept_no", "")))
+                pick = [d for d in rows if d.get("rcept_no") == rn] or prev[-1:] or rows[:1]
+                info = {"exact": any(d.get("rcept_no") == rn for d in pick)}
+                for d in pick:
+                    for k in ("pymd", "sbd", "slta", "stksen", "slmth"):
+                        if d.get(k) and k not in info:
+                            info[k] = d[k]
+                cache[rn] = info
+            info = cache[rn]
+            pay = parse_date(info.get("pymd", "") or "")
+            if not pay and re.fullmatch(r"\d{8}", str(info.get("pymd", ""))):
+                pay = f"{info['pymd'][:4]}-{info['pymd'][4:6]}-{info['pymd'][6:]}"
+            if not pay:
+                continue
+            got += 1
+            sub = parse_date(info.get("sbd", "") or "")
+            e["detail"] = {"amount": to_int(info.get("slta")), "amount_label": "공모" if info.get("exact") else "공모(최초 신고 기준)",
+                           "dates": [["납입일", pay]] + ([["청약일", sub]] if sub else []), "texts": []}
+    except (OutOfTime, DartError) as ex:
+        warn(f"IPO 공모 정보 조회 중단 ({ex.__class__.__name__}) — 다음 실행에서 이어서")
+    save_json(path, cache)
+    STATS["ipo_dates"] = got
+
+
 def est_dividend_pay(e: dict) -> str | None:
     """배당 지급예정일이 공시에 없을 때 추정 (최근 1년 공시에서 지급예정일이 있는 건의 실제 간격 기준)
     - 기준일이 12월 말인 결산배당(주총 후 지급): 기준일 + 110일 (중앙값, 대부분 4월 중순~하순)
@@ -1619,6 +1681,8 @@ def main() -> int:
         events = sorted(store["events"].values(), key=lambda x: (x["date"], x["rcept_no"]), reverse=True)
         coverage = (now_kst().date() - parse_ymd(store["oldest"])).days + 1 if store.get("oldest") else 0
 
+    events = filter_ipo(events)
+
     watch, corp_map = {}, {}
     if WATCHLIST_PATH.exists() and len(WATCHLIST_PATH.read_text(encoding="utf-8-sig").strip().splitlines()) > 1:
         try:
@@ -1634,6 +1698,7 @@ def main() -> int:
     fins = update_financials(universe, infos)
     contacts = update_details(events) if CFG.get("details", {}).get("enabled") else {}
     enrich_bond_dates(events)
+    enrich_ipo(events)
     save_json(ROOT / "reports" / "dates_status.json", {"generated_at": now_kst().isoformat(timespec="minutes"),
                                                       "by_category": dates_status(events), "bond_diag": BOND_DIAG})
     ref = update_ref_assets(fins)
