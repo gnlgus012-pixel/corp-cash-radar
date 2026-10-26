@@ -1608,7 +1608,7 @@ def enrich_ipo(events: list[dict]) -> None:
             if e.get("category") != "IPO 공모" or e.get("detail"):
                 continue
             rn = e["rcept_no"]
-            if (rn not in cache or cache[rn].get("v") != 2) and STATS.get("ipo_api", 0) < 300:
+            if (rn not in cache or cache[rn].get("v") != 3) and STATS.get("ipo_api", 0) < 300:
                 STATS["ipo_api"] = STATS.get("ipo_api", 0) + 1
                 # IPO 는 최초 증권신고서가 확정 공시보다 1~3달 앞서 접수되는 경우가 많아 150일 전부터 조회
                 bgn = (parse_ymd(e["date"]) - timedelta(days=150)).strftime("%Y%m%d")
@@ -1619,9 +1619,11 @@ def enrich_ipo(events: list[dict]) -> None:
                                           "groups": [g.get("title") for g in j.get("group", []) if isinstance(g, dict)],
                                           "first_rows": [{k: v for k, v in d.items() if k not in ("corp_code",)} for d in list(_walk_dicts(j))[1:4]]}
                 rows = [d for d in _walk_dicts(j) if d.get("pymd") or d.get("slta")]
-                prev = sorted((d for d in rows if str(d.get("rcept_no", "")) <= rn), key=lambda d: str(d.get("rcept_no", "")))
-                pick = [d for d in rows if d.get("rcept_no") == rn] or prev[-1:] or rows[:1]
-                info = {"v": 2, "exact": any(d.get("rcept_no") == rn for d in pick)}
+                # 납입일(일반사항)과 모집총액(증권의종류)이 다른 묶음에 있어, 같은 접수번호의 행을 모두 모은다
+                rcs = sorted({str(d.get("rcept_no", "")) for d in rows})
+                target = rn if rn in rcs else (max([x for x in rcs if x <= rn], default="") or (rcs[-1] if rcs else ""))
+                pick = [d for d in rows if str(d.get("rcept_no", "")) == target]
+                info = {"v": 3, "exact": target == rn}
                 for d in pick:
                     for k in ("pymd", "sbd", "slta", "stksen", "slmth"):
                         if d.get(k) and k not in info:
