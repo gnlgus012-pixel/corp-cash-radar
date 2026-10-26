@@ -29,6 +29,7 @@ MAX_API = int(C.os.environ.get("CAL_MAX_API", "1500"))     # 실행당 발행정
 MEZZ_API = {"전환사채권발행결정": ("cvbdIsDecsn.json", "CB"), "신주인수권부사채권발행결정": ("bdwtIsDecsn.json", "BW"),
             "교환사채권발행결정": ("exbdIsDecsn.json", "EB")}
 STATS = Counter()
+PLEDGE_CHECK: list[dict] = []   # 검증용 (개인 이름 제외)
 
 
 def norm_nm(s: str) -> str:
@@ -163,10 +164,18 @@ def build(store: dict, data: dict, today: date) -> list[dict]:
             if k not in latest or i["date"] > latest[k]["date"]:
                 latest[k] = i
     for i in latest.values():
-        if lo <= i["maturity"] <= hi:
+        # 계약별로: 그 계약의 만기일 · 담보설정금액 · 채권자 (공시에 계약별 차입액은 없어 담보설정금액으로 표시)
+        for c in i.get("contracts") or []:
+            d = c.get("end")
+            if not d or not (lo <= d <= hi):
+                continue
             items.append({"kind": "주식담보 만기", "corp_code": i["corp_code"], "corp_name": i["corp_name"], "corp_cls": i.get("corp_cls", ""),
-                          "date": i["maturity"], "amount": i.get("debt_total") or i.get("amount"), "rcept_no": i["rcept_no"],
-                          "label": f"대주주 {i.get('person', '')} · {i.get('how') or ''}".strip(" ·"), "issued": None})
+                          "date": d, "amount": c.get("amount"), "rcept_no": i["rcept_no"],
+                          "label": f"대주주 {i.get('person', '')} · {c.get('lender') or ''} · 담보설정액".strip(" ·"),
+                          "issued": c.get("signed"),
+                          "note": f"이 대주주 전체 담보 차입 {round((i.get('debt_total') or 0) / 1e8):,}억 중 이 계약분" if i.get("debt_total") else None})
+            PLEDGE_CHECK.append({"corp": i["corp_name"], "lender": c.get("lender"), "amount": c.get("amount"), "end": d,
+                                 "debt_total": i.get("debt_total"), "rcept_no": i["rcept_no"]})
     # 대여금 회수
     for e in data.get("events", []):
         if e.get("category") != "금전 대여":
@@ -208,6 +217,7 @@ def main() -> int:
         out.update({"items": len(items), "by_kind": Counter(i["kind"] for i in items),
                     "amount_by_kind_eok": {k: round(sum(i.get("amount") or 0 for i in items if i["kind"] == k) / 1e8)
                                            for k in {i["kind"] for i in items}},
+                    "pledge_check": [x for x in PLEDGE_CHECK if "서진" in x["corp"]] + PLEDGE_CHECK[:5],
                     "top": [{k: i.get(k) for k in ("kind", "corp_name", "date", "amount", "label")}
                             for i in sorted(items, key=lambda x: -(x.get("amount") or 0))[:12] if i["kind"] != "주식담보 만기"]})
     C.save_json(C.ROOT / "reports" / "calendar_status.json", out)   # 공개 저장소용: 건수·회사명만 (개인 이름 없음)

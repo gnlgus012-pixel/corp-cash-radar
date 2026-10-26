@@ -558,6 +558,10 @@ def build_items(store: dict, prices: dict, today: date, corp_map: dict) -> list[
                            "date_kind": "담보계약 체결일 (대출 실행 시점)" + ("" if p.get("contract_date") else " — 미기재로 공시일"),
                            "how": ", ".join(sorted({c["lender"] for c in new if c.get("lender")})),
                            "debt_total": p.get("debt_total"), "maturity": ends[0] if ends else None,
+                           # 계약별 만기 (만기 캘린더는 계약 단위로 표시 — 총 차입액을 가장 빠른 만기에 몰지 않도록)
+                           "contracts": [{"lender": c.get("lender"), "amount": c.get("amount"), "end": c.get("end"),
+                                          "shares": c.get("shares"), "signed": c.get("signed"), "purpose": c.get("purpose")}
+                                         for c in cts if c.get("end")],
                            "amount_label": "차입 총액" if single and p.get("debt_total") else "담보설정액",
                            "note": (f"이번 담보설정 {C.eok(set_new)}" if set_new else "")
                                    + (f" · 가장 빠른 만기 {ends[0]}" if ends else "")
