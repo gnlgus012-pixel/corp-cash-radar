@@ -2,6 +2,14 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<!-- Google tag (gtag.js) — 방문 통계 (익명). 개인정보·법인명은 보내지 않음 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QKWN46J5P0"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QKWN46J5P0');
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -853,6 +861,7 @@ function showTab(t) {
   $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   $$("section.tab").forEach(s => s.classList.toggle("on", s.id === "t-" + t));
   history.replaceState(null, "", "#" + t);
+  try { if (window.gtag) gtag("event", "tab_view", {tab_name: t, page_title: ($(`#nav button[data-tab="${t}"]`)?.textContent || t)}); } catch(e) {}
   if (t === "flow") drawFlowChart();
   if (t === "cal") drawCalChart();
   if (t === "rate") drawRateCharts();
