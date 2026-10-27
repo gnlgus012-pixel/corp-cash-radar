@@ -861,7 +861,8 @@ function showTab(t) {
   $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   $$("section.tab").forEach(s => s.classList.toggle("on", s.id === "t-" + t));
   history.replaceState(null, "", "#" + t);
-  try { if (window.gtag) gtag("event", "tab_view", {tab_name: t, page_title: ($(`#nav button[data-tab="${t}"]`)?.textContent || t)}); } catch(e) {}
+  // 탭 이동을 '페이지 조회'로 기록 → 애널리틱스 '페이지 제목별 조회수'에 탭 이름으로 집계
+  try { if (window.gtag) gtag("event", "page_view", {page_title: ($(`#nav button[data-tab="${t}"]`)?.textContent || t), page_location: location.href}); } catch(e) {}
   if (t === "flow") drawFlowChart();
   if (t === "cal") drawCalChart();
   if (t === "rate") drawRateCharts();
