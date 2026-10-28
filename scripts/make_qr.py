@@ -28,8 +28,18 @@ d.rectangle([0, 0, card.size[0], 150], fill="#0f1b2d")
 t = "법인WM AI레이더"
 d.text(((card.size[0] - d.textlength(t, font=F(64))) / 2, 38), t, font=F(64), fill="#5eead4")
 card.paste(img.convert("RGB"), (80, 190))
-for i, line in enumerate(["휴대폰 카메라로 찍어 접속하세요", "비밀번호 입력 후 📱 버튼으로 앱 설치"]):
+for i, line in enumerate(["휴대폰 카메라로 찍어 접속하세요", "비밀번호 입력 후 상단 휴대폰 버튼으로 앱 설치"]):
     f = F(40 if i == 0 else 32)
     d.text(((card.size[0] - d.textlength(line, font=f)) / 2, W + 230 + i * 70), line, font=f, fill="#0f1b2d" if i == 0 else "#4a5568")
 card.save(ROOT / "docs/icons/qr_card.png")
 print("ok", W, fonts[:1])
+
+# 검증: 실제로 읽히는지 디코딩해서 주소 확인
+try:
+    import cv2
+    for p in ("docs/icons/qr.png", "docs/icons/qr_card.png"):
+        val, _, _ = cv2.QRCodeDetector().detectAndDecode(cv2.imread(str(ROOT / p)))
+        print("decode", p, val)
+        assert val == URL, f"QR 디코딩 불일치: {val!r}"
+except ImportError:
+    print("opencv 없음 — 디코딩 검증 생략")
