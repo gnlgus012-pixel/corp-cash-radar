@@ -130,6 +130,8 @@ tbody tr.click:hover{background:var(--surface-2)}
 .tag.k-mezz{background:#f1e9ff;color:#6b3fd4}
 .tag.k-pledge{background:var(--warn-bg);color:var(--warn)}
 .tag.k-loan{background:var(--in-bg);color:var(--in)}
+.tag.k-lock{background:#fdecee;color:#b3263a}
+:root[data-theme="dark"] .tag.k-lock{background:#3d1820;color:#ff9aa8}
 :root[data-theme="dark"] .tag.k-bond{background:#17264a;color:#8fb4ff}
 :root[data-theme="dark"] .tag.k-mezz{background:#261a44;color:#c3a6ff}
 .tag.cash{background:var(--in-bg);color:var(--in)}
@@ -323,6 +325,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <button data-tab="brief" class="on">브리핑</button>
     <button data-tab="flow">자금 동향</button>
     <button data-tab="owner">대주주(개인)</button>
+    <button data-tab="lock">보호예수</button>
     <button data-tab="cal">만기 캘린더</button>
     <button data-tab="screen">여유자금 법인</button>
     <button data-tab="prod">자금 성격별</button>
@@ -428,6 +431,28 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="meta" id="ow-foot" style="margin-top:8px"></p>
   </section>
 
+  <!-- 보호예수 -->
+  <section class="tab" id="t-lock">
+    <h2>대주주 보호예수 해제 일정</h2>
+    <p class="sub">IPO 증권신고서의 최대주주등 의무보유(매각제한) 표, 제3자배정 유상증자의 배정 대상자별 보호예수를 <b>사람별</b>로 모았습니다. 해제일부터 팔거나 담보로 쓸 수 있어 매각 자금·담보대출 수요가 생기는 시점입니다.
+      <br><span class="meta">해제 예정일 = 상장일(상장 전이면 납입일+4일 추정)·신주 상장예정일 + 의무보유 기간. 평가액 = 주식수 × 최근 종가(상장 전은 공모가·발행가). 기간 연장·조기 해제·이미 판 주식은 반영되지 않으니 원문으로 확인하세요.</span></p>
+    <div class="grid g4" id="lk-kpis" style="margin-bottom:14px"></div>
+    <div class="filters">
+      <div class="seg-btns" id="lk-range">
+        <button data-v="past30">지난 30일</button><button data-v="n30">향후 30일</button><button data-v="n90" class="on">향후 90일</button><button data-v="n180">6개월</button><button data-v="n365">1년</button><button data-v="all">전체</button>
+      </div>
+      <div class="seg-btns" id="lk-src">
+        <button data-v="" class="on">전체</button><button data-v="IPO">IPO</button><button data-v="제3자배정 증자">제3자배정 증자</button>
+      </div>
+      <select id="lk-min"><option value="0">모든 금액</option><option value="100000000" selected>1억 이상</option><option value="1000000000">10억 이상</option><option value="10000000000">100억 이상</option></select>
+      <select id="lk-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="E">비상장·기타</option></select>
+      <input type="text" id="lk-q" placeholder="법인명·이름">
+      <span class="count" id="lk-count"></span>
+    </div>
+    <div class="tw"><table id="lkTable"></table></div>
+    <p class="meta" id="lk-foot" style="margin-top:8px"></p>
+  </section>
+
   <!-- 만기 캘린더 -->
   <section class="tab" id="t-cal">
     <h2>만기·상환 캘린더</h2>
@@ -444,7 +469,7 @@ tbody tr.click:hover{background:var(--surface-2)}
         <button data-v="past30">지난 30일</button><button data-v="n30">향후 30일</button><button data-v="n90" class="on">향후 90일</button><button data-v="n180">6개월</button><button data-v="n365">1년</button>
       </div>
       <div class="seg-btns" id="cal-kind">
-        <button data-v="" class="on">전체</button><button data-v="회사채 만기">회사채</button><button data-v="메자닌 만기">메자닌</button><button data-v="주식담보 만기">주식담보</button><button data-v="대여금 회수">대여금 회수</button>
+        <button data-v="" class="on">전체</button><button data-v="회사채 만기">회사채</button><button data-v="메자닌 만기">메자닌</button><button data-v="주식담보 만기">주식담보</button><button data-v="대여금 회수">대여금 회수</button><button data-v="보호예수 해제">보호예수</button>
       </div>
       <select id="cal-min"><option value="0">모든 금액</option><option value="1000000000" selected>10억 이상</option><option value="10000000000">100억 이상</option><option value="50000000000">500억 이상</option></select>
       <select id="cal-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="E">비상장</option></select>
@@ -589,6 +614,7 @@ const st = {
   topic: 0,
   ow: {period: 30, cat: "", min: 1e8, mkt: "", q: "", sort: "date", dir: -1},
   cal: {range: "n90", kind: "", min: 1e9, mkt: "", q: "", sort: "date", dir: 1},
+  lk: {range: "n90", src: "", min: 1e8, mkt: "", q: "", sort: "date", dir: 1},
 };
 
 /* ── 테마 ── */
@@ -832,6 +858,7 @@ function applyRegion(data) {
   const ok = code => { const r = reg[code]; return !!r && r.sido === R.sido && (!R.sgg || r.sgg === R.sgg); };
   const out = {...data, companies: data.companies.filter(c => ok(c.corp_code)), events: data.events.filter(e => ok(e.corp_code))};
   if (data.holders) out.holders = {...data.holders, items: data.holders.items.filter(i => ok(i.corp_code))};
+  if (data.lockup) out.lockup = {...data.lockup, items: data.lockup.items.filter(i => ok(i.corp_code))};
   if (data.calendar) out.calendar = {...data.calendar, items: data.calendar.items.filter(i => ok(i.corp_code))};
   $("#regionBar").classList.add("on");
   $("#rg-note").textContent = `${R.sgg ? R.sido + " " + R.sgg : R.sido} 법인 ${out.companies.length.toLocaleString()}개사만 표시 · 비상장 등 주소 미확보 법인은 제외`;
@@ -850,7 +877,7 @@ function init(data) {
   if (D.meta.warnings?.length) b += `<details class="banner warn"><summary>수집 경고 ${D.meta.warnings.length}건</summary><ul>${D.meta.warnings.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>`;
   $("#banners").innerHTML = b;
 
-  renderBrief(); initFlow(); initOwner(); initCal(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
+  renderBrief(); initFlow(); initOwner(); initLock(); initCal(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
   $$("#nav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
   const h = location.hash.slice(1);
   if (h.startsWith("c=")) openCompany(h.slice(2)); else if (/^[a-z]+$/.test(h)) showTab(h);
@@ -1209,11 +1236,73 @@ function renderOwner() {
   bindCo($("#owTable"));
 }
 
+/* ── 보호예수 ── */
+const LK_COLS = {
+  date: {l: "해제 예정일", v: i => i.date, def: 1}, name: {l: "법인", v: i => i.corp_name, def: 1},
+  person: {l: "대주주 (관계)", v: i => i.person, def: 1}, shares: {l: "주식수", v: i => i.shares || null, def: -1},
+  amount: {l: "평가액", v: i => i.amount || null, def: -1}, period: {l: "의무보유", v: i => i.months, def: -1},
+  src: {l: "출처", v: i => i.src, def: 1},
+};
+const lkRange = r => r === "all" ? ["0000", "9999"] : calRange(r);
+function initLock() {
+  const L = D.lockup;
+  if (!L) { $("#t-lock").insertAdjacentHTML("beforeend", `<div class="card empty">보호예수 데이터는 다음 갱신부터 표시됩니다.</div>`); return; }
+  const o = st.lk;
+  const seg = (id, key) => $$(`#${id} button`).forEach(b => b.onclick = () => {
+    $$(`#${id} button`).forEach(x => x.classList.toggle("on", x === b)); o[key] = b.dataset.v; renderLock();
+  });
+  seg("lk-range", "range"); seg("lk-src", "src");
+  $("#lk-min").onchange = e => { o.min = +e.target.value; renderLock(); };
+  $("#lk-mkt").onchange = e => { o.mkt = e.target.value; renderLock(); };
+  $("#lk-q").oninput = e => { o.q = e.target.value.replace(/\s/g, ""); renderLock(); };
+  const sum = arr => arr.reduce((a, i) => a + (i.amount || 0), 0);
+  const win = r => { const [a, b] = calRange(r); return L.items.filter(i => i.date >= a && i.date <= b); };
+  const people = arr => new Set(arr.map(i => i.corp_code + i.person)).size;
+  const w30 = win("n30"), w90 = win("n90"), w365 = win("n365");
+  const pre = L.items.filter(i => /추정/.test(i.base_kind || ""));
+  $("#lk-kpis").innerHTML = [
+    {l: "향후 30일 해제", v: eok(sum(w30)), n: `${people(w30)}명 · 평가액`},
+    {l: "향후 90일 해제", v: eok(sum(w90)), n: `${people(w90)}명 · ${new Set(w90.map(i => i.corp_code)).size}개 법인`},
+    {l: "1년 안 해제", v: eok(sum(w365)), n: `${people(w365)}명`},
+    {l: "상장 전 IPO 대주주", v: `${people(pre)}명`, n: `${new Set(pre.map(i => i.corp_code)).size}개 법인 · 공모가 기준`},
+  ].map(x => `<div class="card kpi"><div class="lbl">${x.l}</div><div class="val">${x.v}</div><div class="note">${esc(x.n)}</div></div>`).join("");
+  $("#lk-foot").textContent = "대상: 최근 3년 증권신고서(지분증권, 신규상장) · 최근 2년 유상증자결정(제3자배정)의 개인 주주" +
+    (L.pending ? ` · 원문 분석 대기 ${L.pending.toLocaleString()}건 (매일 이어서 처리)` : "");
+  renderLock();
+}
+function renderLock() {
+  const o = st.lk, [a, b] = lkRange(o.range);
+  const rows = D.lockup.items.filter(i => i.date >= a && i.date <= b && (!o.src || i.src === o.src) &&
+    (o.min === 0 || (i.amount || 0) >= o.min) && (!o.mkt || (o.mkt === "E" ? !["Y", "K"].includes(i.corp_cls) : i.corp_cls === o.mkt)) &&
+    (!o.q || (i.corp_name + i.person).replace(/\s/g, "").includes(o.q)));
+  const sv = LK_COLS[o.sort].v;
+  rows.sort((x, y) => { const va = sv(x), vb = sv(y);
+    if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+    return (typeof va === "string" ? va.localeCompare(vb, "ko") : va - vb) * o.dir || (y.amount || 0) - (x.amount || 0); });
+  const th = (k, cls = "") => `<th class="sort ${cls} ${o.sort === k ? (o.dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${LK_COLS[k].l}</th>`;
+  const LIMIT = 400;
+  $("#lk-count").textContent = `${rows.length.toLocaleString()}명 · ${eok(rows.reduce((s2, i) => s2 + (i.amount || 0), 0))}`;
+  $("#lkTable").innerHTML = `<thead><tr>${th("date")}${th("name")}${th("person")}${th("shares", "num")}${th("amount", "num")}${th("period")}${th("src")}<th>원문</th></tr></thead><tbody>${
+    rows.slice(0, LIMIT).map(i => `<tr class="${CO_BY_CODE[i.corp_code] ? "click" : ""}" data-co="${esc(i.corp_code)}">
+      <td><b>${esc(i.date.replaceAll("-", "."))}</b><div class="meta">${dday(i.date)}</div></td>
+      <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y: "유가", K: "코스닥", N: "코넥스"}[i.corp_cls] || "비상장·기타"}</div></td>
+      <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "-")}</div></td>
+      <td class="num">${i.shares ? i.shares.toLocaleString() : "-"}</td>
+      <td class="num">${i.amount ? (i.amount >= 1e8 ? eok(i.amount) : (i.amount / 1e4).toFixed(0) + "만") : "-"}<div class="meta">${esc(i.px_kind || "")}${i.px ? " " + i.px.toLocaleString() + "원" : ""}</div></td>
+      <td>${esc(i.period)}<div class="meta">${esc(i.base_kind)} ${esc((i.base || "").replaceAll("-", "."))}</div></td>
+      <td><span class="tag k-lock">${esc(i.src)}</span></td>
+      <td>${DART_LINK(i, "원문")}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">조건에 맞는 보호예수 해제가 없습니다.</td></tr>`}</tbody>`;
+  $$("#lkTable th.sort").forEach(h => h.onclick = () => { const k = h.dataset.k;
+    if (o.sort === k) o.dir *= -1; else { o.sort = k; o.dir = LK_COLS[k].def; } renderLock(); });
+  bindCo($("#lkTable"));
+}
+
 /* ── 만기 캘린더 ── */
 const CAL_KIND = {"회사채 만기": {c: "k-bond", col: "#1f6feb", hint: "만기 상환 자금 준비 — 차환 발행·상환 전 대기자금"},
   "메자닌 만기": {c: "k-mezz", col: "#7c4ddb", hint: "미전환 잔액 상환 — 상환 재원 준비"},
   "주식담보 만기": {c: "k-pledge", col: "#c08a00", hint: "대주주 개인 대출 만기 — 대환·연장 수요"},
-  "대여금 회수": {c: "k-loan", col: "#0e9f6e", hint: "빌려준 돈이 돌아오는 날 — 자금 유입"}};
+  "대여금 회수": {c: "k-loan", col: "#0e9f6e", hint: "빌려준 돈이 돌아오는 날 — 자금 유입"},
+  "보호예수 해제": {c: "k-lock", col: "#d1495b", hint: "대주주 의무보유 해제 — 매각 자금·담보대출 수요 (평가액은 종가 기준)"}};
 const CAL_COLS = {
   date: {l: "만기일", v: i => i.date, def: 1}, kind: {l: "유형", v: i => i.kind, def: 1},
   name: {l: "법인", v: i => i.corp_name, def: 1}, label: {l: "내용", v: i => i.label, def: 1},
@@ -1615,10 +1704,20 @@ function openCompany(code) {
   history.replaceState(null, "", "#c=" + code);
   $("#drawer .x").onclick = closeCompany;
 }
+function lockCard(code) {
+  const L = (D.lockup?.items || []).filter(i => i.corp_code === code).sort((a, b) => a.date.localeCompare(b.date));
+  if (!L.length) return "";
+  return `<div class="card"><h3>보호예수 해제 <span class="sub" style="font-weight:400">${L.length}명</span></h3><table><tbody>${
+    L.slice(0, 30).map(i => `<tr><td>${esc(i.date.replaceAll("-", "."))}<div class="meta">${dday(i.date)}</div></td>
+      <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "")}</div></td>
+      <td class="num">${i.shares ? i.shares.toLocaleString() + "주" : "-"}</td>
+      <td class="num">${i.amount ? eok(i.amount) : "-"}</td>
+      <td>${esc(i.src)} ${esc(i.period)} ${DART_LINK(i, "원문")}</td></tr>`).join("")}</tbody></table></div>`;
+}
 function ownerCard(code) {
   const L = (D.holders?.items || []).filter(i => i.corp_code === code).sort((a, b) => b.date.localeCompare(a.date));
-  if (!L.length) return "";
-  return `<div class="card"><h3>대주주(개인) 공시 <span class="sub" style="font-weight:400">${L.length}건</span></h3><table><tbody>${
+  if (!L.length) return lockCard(code);
+  return lockCard(code) + `<div class="card"><h3>대주주(개인) 공시 <span class="sub" style="font-weight:400">${L.length}건</span></h3><table><tbody>${
     L.slice(0, 30).map(i => `<tr><td>${dfmt(i.date)}</td><td><span class="tag ${OW_KIND[i.cat] || "gray"}${i.cancelled ? " strike" : ""}">${esc(i.cat)}</span></td>
       <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "")}</div></td>
       <td class="num">${i.amount ? eok(i.amount) + (i.est ? ' <span class="meta">추정</span>' : "") : "-"}</td>
