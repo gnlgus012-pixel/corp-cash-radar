@@ -26,9 +26,9 @@ import holders as H  # noqa: E402
 
 STORE_PATH = C.CACHE_DIR / "lockup.json"
 CHECK_OUT = C.ROOT / "lockup_check.json"      # 검증용 (개인 이름 포함 → 저장소에 올리지 않고 Actions 산출물로만)
-PARSE_VER = "l2"   # IPO 해석 버전. 증자는 RIGHTS_VER
+PARSE_VER = "l3"   # IPO 해석 버전. 증자는 RIGHTS_VER
 RIGHTS_VER = "l1"
-# l2: 기간 칸 각주 「30개월(주1)」 인식, 발행조건확정본에 표가 없으면 이전 신고서 읽기
+# l3: 「2,687,000주」 숫자, 머리 「매도제한」·「구분」, 병합된 기간 칸 / l2: 기간 칸 각주 「30개월(주1)」 인식, 발행조건확정본에 표가 없으면 이전 신고서 읽기
 SCAN_VER = "s2"    # s2: IPO는 정정 전 원본까지 목록에 (last_reprt_at=N)
 BUILD_RESERVE = int(os.environ.get("LOCKUP_BUILD_RESERVE_SEC", "240"))
 IPO_YEARS = 3.3
@@ -83,6 +83,7 @@ def person_ok(name: str, rel: str) -> bool:
 
 def to_int(s: str):
     s = (s or "").strip()
+    s = re.sub(r"\s*(주|원)$", "", s)   # '2,687,000주' '26,400원'
     return int(s.replace(",", "")) if INT_RX.match(s) else None
 
 
@@ -117,14 +118,16 @@ def parse_ipo(rows: list[list[str]]) -> dict:
     i = 0
     while i < len(rows):
         h = flat[i]
-        if not (re.search(r"매각제한|의무보유|보호예수|확약기간", h) and re.search(r"기간", h)
-                and re.search(r"주주명|성명|주주", h)):
+        if not (len(h) < 300 and len(rows[i]) >= 3   # 본문 문단은 표 머리가 아님
+                and re.search(r"매각제한|매도제한|의무보유|보호예수|확약기간", h) and re.search(r"기간|제한", h)
+                and re.search(r"주주|성명|이름|명칭|구분", h)):
             i += 1
             continue
         out["tbl"] = out.get("tbl", 0) + 1
         header = " ".join(flat[i:i + 3])
         restricted_col = "매각제한물량" in header or "매각제한주식" in header or "확약주식수" in header
         prev = None
+        last_p = None   # 기간 칸이 위 행과 병합된 경우 이어받기
         j = i + 1
         while j < len(rows) and j < i + 120:
             r = rows[j]
@@ -132,16 +135,23 @@ def parse_ipo(rows: list[list[str]]) -> dict:
             if (f.startswith(("합계", "합 계", "총계")) or re.match(r"^\(?주\d", f) or f.startswith(("[", "【", "※"))
                     or re.match(r"^[가-하]\.", f)):
                 break
+            if f.startswith(("유통가능", "소계", "소 계")):
+                last_p = None
             p_idx = None
             for k in range(len(r) - 1, -1, -1):
                 if period_of(r[k]):
                     p_idx = k
                     break
             if p_idx is None:
-                j += 1
-                continue
-            months, ptxt = period_of(r[p_idx])
-            before = r[:p_idx]
+                if not (last_p and len(r) < last_p[2] and any(to_int(c) for c in r)):
+                    j += 1
+                    continue
+                months, ptxt = last_p[0], last_p[1]
+                before = list(r)
+            else:
+                months, ptxt = period_of(r[p_idx])
+                last_p = (months, ptxt, len(r))
+                before = r[:p_idx]
             name_idx = next((k for k, c in enumerate(before) if to_int(c) is None and "%" not in c
                              and person_ok(c, "")), None)
             ints = [to_int(c) for c in before]
@@ -157,6 +167,8 @@ def parse_ipo(rows: list[list[str]]) -> dict:
                 name = before[name_idx].strip()
                 rel = next((c.strip() for c in before[name_idx + 1:] if c.strip() and to_int(c) is None
                             and "%" not in c and c.strip() != "-" and not re.fullmatch(r"[\d.,]+|보통주|우선주|종류주|기명식.*", c.strip())), "")
+                if not rel and name_idx > 0 and not re.search(r"유통|물량|가능|^-$", nz(before[name_idx - 1])):
+                    rel = before[name_idx - 1].strip()   # '최대주주 | 홍길동 | 보통주' 처럼 관계가 앞에 오는 표
                 if not person_ok(name, rel):
                     prev = None
                     j += 1
