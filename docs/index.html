@@ -375,6 +375,15 @@ tbody tr.click:hover{background:var(--surface-2)}
     </div>
     <details class="card ratebox" id="t-rate">
       <summary><h3 style="display:inline">금리 상세</h3> <span class="sub" style="font-weight:400">국내·미국 금리, 한미 금리차, 추이 차트 — 눌러서 펼치기</span></summary>
+      <p class="sub" id="rate-sub">한국은행 ECOS 기준 · 국내 금리는 일별, 미국 금리는 월평균(ECOS 제공 주기)</p>
+      <div id="rateTiles"></div>
+      <div class="filters" style="margin-top:4px">
+        <div class="seg-btns" id="r-period">
+          <button data-v="90">3개월</button><button data-v="180">6개월</button><button data-v="365" class="on">1년</button><button data-v="1095">3년</button>
+        </div>
+        <span class="count">차트에 마우스를 올리거나 손가락으로 누르면 날짜별 값이 보입니다</span>
+      </div>
+      <div class="grid g2eq" id="rateCharts"></div>
     </details>
   </section>
 
@@ -516,19 +525,6 @@ tbody tr.click:hover{background:var(--surface-2)}
   </section>
 
   <!-- 주요 이슈 -->
-  <section class="tab" id="t-rate">
-    <h2>금리</h2>
-    <p class="sub" id="rate-sub">한국은행 ECOS 기준 · 국내 금리는 일별, 미국 금리는 월평균(ECOS 제공 주기)</p>
-    <div id="rateTiles"></div>
-    <div class="filters" style="margin-top:4px">
-      <div class="seg-btns" id="r-period">
-        <button data-v="90">3개월</button><button data-v="180">6개월</button><button data-v="365" class="on">1년</button><button data-v="1095">3년</button>
-      </div>
-      <span class="count">차트에 마우스를 올리거나 손가락으로 누르면 날짜별 값이 보입니다</span>
-    </div>
-    <div class="grid g2eq" id="rateCharts"></div>
-  </section>
-
   <section class="tab" id="t-issue">
     <h2>주요 이슈</h2>
     <p class="sub" id="issue-sub">키워드별 최신 뉴스</p>
