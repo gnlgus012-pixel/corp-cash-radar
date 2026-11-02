@@ -430,7 +430,15 @@ def main() -> int:
                             for i in sorted(items, key=lambda x: -(x.get("amount") or 0))[:10]],
               "stats": STATS}
     C.save_json(C.ROOT / "reports" / "lockup_status.json", status)   # 공개용: 건수·회사명만
-    if CHECK:
+    if CHECK:   # 공개용 진단: 회사명·접수번호·보고서명만 (개인 이름 없음)
+        miss = [{"corp": d["corp_name"], "rcept_no": rn, "report_nm": d.get("report_nm", ""), "date": d["date"],
+                 "pay_date": (d.get("parsed") or {}).get("pay_date"), "err": d.get("err")}
+                for rn, d in sorted(docs.items(), reverse=True)
+                if d["kind"] == "ipo" and rn in keep and (d.get("parsed") or {}).get("ipo") and not d["parsed"].get("people")]
+        hit = [{"corp": d["corp_name"], "rcept_no": rn, "report_nm": d.get("report_nm", ""), "date": d["date"]}
+               for rn, d in sorted(docs.items(), reverse=True)
+               if d["kind"] == "ipo" and rn in keep and (d.get("parsed") or {}).get("people")]
+        C.save_json(C.ROOT / "reports" / "lockup_diag.json", {"ipo_no_people": miss, "ipo_with_people": hit})
         C.save_json(CHECK_OUT, {"items": items, "ipo_samples": [
             {"rcept_no": rn, "corp": d["corp_name"], **(d.get("parsed") or {})}
             for rn, d in sorted(docs.items(), reverse=True) if d["kind"] == "ipo" and d.get("parsed")][:40],
