@@ -6,6 +6,7 @@
   메자닌 만기    : 최근 5년 전환·신주인수권부·교환사채 발행결정 → DART 주요사항 API(cvbd/bdwt/exbd)의 사채만기일·권면총액
   주식담보 만기  : 대주주(개인) 탭의 최대주주 변경 수반 주식담보 계약의 가장 빠른 만기
   대여금 회수    : 금전대여 결정의 대여 종료일 (자금 유입)
+  보호예수 해제  : lockup.py 결과 (대주주 개인 의무보유 해제 예정일, 평가액 = 주식수 × 종가)
 
 한계 (화면에 표시): 발행 당시 기준이라 조기상환·매입소각·전환으로 줄어든 잔액은 반영 못 함. 사모 회사채·CP·전단채는 DART에 없어 제외.
 """
@@ -176,6 +177,18 @@ def build(store: dict, data: dict, today: date) -> list[dict]:
                           "note": f"이 대주주 전체 담보 차입 {round((i.get('debt_total') or 0) / 1e8):,}억 중 이 계약분" if i.get("debt_total") else None})
             PLEDGE_CHECK.append({"corp": i["corp_name"], "lender": c.get("lender"), "amount": c.get("amount"), "end": d,
                                  "debt_total": i.get("debt_total"), "rcept_no": i["rcept_no"]})
+    # 보호예수 해제 (대주주 개인, 회사·해제일별로 묶음)
+    grp = {}
+    for i in (data.get("lockup") or {}).get("items", []):
+        if lo <= i["date"] <= hi:
+            grp.setdefault((i["corp_code"], i["date"]), []).append(i)
+    for (cc, d), xs in grp.items():
+        xs.sort(key=lambda x: -(x.get("shares") or 0))
+        who = xs[0]["person"] + (f" 외 {len(xs) - 1}명" if len(xs) > 1 else "")
+        items.append({"kind": "보호예수 해제", "corp_code": cc, "corp_name": xs[0]["corp_name"], "corp_cls": xs[0].get("corp_cls", ""),
+                      "date": d, "amount": sum(x.get("amount") or 0 for x in xs) or None, "rcept_no": xs[0]["rcept_no"],
+                      "label": f"{who} · {xs[0]['src']} {xs[0]['period']}", "issued": xs[0]["base"],
+                      "note": f"{xs[0]['base_kind']} {xs[0]['base']} 기준 · 평가액은 {xs[0]['px_kind']} × 주식수"})
     # 대여금 회수
     for e in data.get("events", []):
         if e.get("category") != "금전 대여":
@@ -219,7 +232,7 @@ def main() -> int:
                                            for k in {i["kind"] for i in items}},
                     "pledge_check": [x for x in PLEDGE_CHECK if "서진" in x["corp"]] + PLEDGE_CHECK[:5],
                     "top": [{k: i.get(k) for k in ("kind", "corp_name", "date", "amount", "label")}
-                            for i in sorted(items, key=lambda x: -(x.get("amount") or 0))[:12] if i["kind"] != "주식담보 만기"]})
+                            for i in sorted(items, key=lambda x: -(x.get("amount") or 0))[:12] if i["kind"] not in ("주식담보 만기", "보호예수 해제")]})
     C.save_json(C.ROOT / "reports" / "calendar_status.json", out)   # 공개 저장소용: 건수·회사명만 (개인 이름 없음)
     C.log(f"만기 캘린더 {out.get('items')}건 / API {STATS['api']}회 (보류 {STATS['api_deferred']})")
     return 0
