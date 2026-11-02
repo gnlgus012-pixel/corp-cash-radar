@@ -40,6 +40,7 @@ jobs:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           RADAR_TIME_BUDGET_MIN: "60"
           LOCKUP_MAX_DOCS: "3000"
+          LOCKUP_BUILD_RESERVE_SEC: "900"
         run: python scripts/lockup.py --check
       - name: 검증 파일 (개인 이름 포함 → 저장소 말고 산출물로만)
         if: always()

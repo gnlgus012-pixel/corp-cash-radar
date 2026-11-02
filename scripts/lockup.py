@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from collections import Counter
@@ -26,6 +27,7 @@ import holders as H  # noqa: E402
 STORE_PATH = C.CACHE_DIR / "lockup.json"
 CHECK_OUT = C.ROOT / "lockup_check.json"      # 검증용 (개인 이름 포함 → 저장소에 올리지 않고 Actions 산출물로만)
 PARSE_VER = "l1"
+BUILD_RESERVE = int(os.environ.get("LOCKUP_BUILD_RESERVE_SEC", "240"))
 IPO_YEARS = 3.3
 RIGHTS_MONTHS = 26
 MAX_DOCS = int(C.os.environ.get("LOCKUP_MAX_DOCS", "150"))
@@ -309,6 +311,12 @@ def parse_pending(store: dict) -> None:
             C.save_json(STORE_PATH, store)
 
 
+def _d(s: str) -> date:
+    """YYYY-MM-DD / YYYYMMDD 둘 다 받음"""
+    s = s.replace("-", "")
+    return C.parse_ymd(s)
+
+
 def first_trade(prices: dict, code: str, after: str, today: date):
     """상장 후 첫 거래일 (네이버 일별 시세의 첫날, after 이후)"""
     if not code:
@@ -316,7 +324,7 @@ def first_trade(prices: dict, code: str, after: str, today: date):
     H.close_on(prices, code, after, today)
     px = prices.get(code, {}).get("px", {})
     a = after.replace("-", "")
-    pre = C.ymd(C.parse_ymd(after) - timedelta(days=10))
+    pre = C.ymd(_d(after) - timedelta(days=10))
     if any(pre <= k < a for k in px):
         return None    # 납입 전에도 거래됨 → 이미 상장된 회사
     cands = sorted(k for k in px if k >= a)
@@ -339,12 +347,12 @@ def build(store: dict, prices: dict, today: date, corp_map: dict) -> list[dict]:
             if not p.get("ipo") or not p.get("pay_date"):
                 continue
             lst = first_trade(prices, code, p["pay_date"], today) if code else None
-            if lst and (C.parse_ymd(lst) - C.parse_ymd(p["pay_date"])).days > 40:
+            if lst and (_d(lst) - _d(p["pay_date"])).days > 40:
                 lst = None
-            if not lst and C.parse_ymd(p["pay_date"]) < today - timedelta(days=60):
+            if not lst and _d(p["pay_date"]) < today - timedelta(days=60):
                 STATS["ipo_not_listed"] += 1   # 철회·상장 무산 추정
                 continue
-            base, base_kind = (lst, "상장일") if lst else (str(C.parse_ymd(p["pay_date"]) + timedelta(days=4)), "상장일(납입일+4일 추정)")
+            base, base_kind = (lst, "상장일") if lst else (str(_d(p["pay_date"]) + timedelta(days=4)), "상장일(납입일+4일 추정)")
             src = "IPO"
         else:
             if not p.get("third"):
@@ -356,7 +364,7 @@ def build(store: dict, prices: dict, today: date, corp_map: dict) -> list[dict]:
             base_kind = "신주 상장예정일" if p.get("list_date") else "납입일"
             src = "제3자배정 증자"
         for pp in p["people"]:
-            rel_d = add_months(C.parse_ymd(base), pp["months"])
+            rel_d = add_months(_d(base), pp["months"])
             if rel_d < lo or rel_d > today + timedelta(days=365 * 3 + 40):
                 continue
             px = H.close_on(prices, code, str(today), today) if code else None
@@ -385,10 +393,14 @@ def main() -> int:
              lambda n: "유상증자결정" in n and "자회사" not in n and "종속회사" not in n and "철회" not in n, today)
     except (C.OutOfTime, C.DartError) as ex:
         C.warn(f"보호예수 목록 수집 중단 ({ex.__class__.__name__}) — 다음 실행에서 이어서")
+    full = C.TIME_BUDGET_SEC
+    if full:
+        C.TIME_BUDGET_SEC = max(60, full - BUILD_RESERVE)   # 시세 조회·정리할 시간은 남겨 둠
     try:
         parse_pending(store)
     except (C.OutOfTime, C.DartError) as ex:
         C.warn(f"보호예수 원문 읽기 중단 ({ex.__class__.__name__}) — 다음 실행에서 이어서")
+    C.TIME_BUDGET_SEC = full
     C.save_json(STORE_PATH, store)
     prices = H.load_prices()
     H.corp_names()
