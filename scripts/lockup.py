@@ -421,7 +421,13 @@ def build(store: dict, prices: dict, today: date, corp_map: dict) -> list[dict]:
             if not lst and _d(p["pay_date"]) < today - timedelta(days=60):
                 STATS["ipo_not_listed"] += 1   # 철회·상장 무산 추정
                 continue
-            base, base_kind = (lst, "상장일") if lst else (str(_d(p["pay_date"]) + timedelta(days=4)), "상장일(납입일+4일 추정)")
+            if lst:
+                base, base_kind = lst, "상장일"
+            else:
+                est = _d(p["pay_date"]) + timedelta(days=4)
+                while est.weekday() >= 5:   # 주말이면 다음 월요일
+                    est += timedelta(days=1)
+                base, base_kind = str(est), "상장일(납입일+4일 추정)"
             src = "IPO"
         else:
             if not p.get("third"):
