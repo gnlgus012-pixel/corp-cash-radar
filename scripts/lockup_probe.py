@@ -5,8 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import collect as C  # noqa: E402
 import lockup as L  # noqa: E402
 
-RNS = ["20261029000504", "20261020000360", "20261016000426", "20261007000327", "20260916000234",
-       "20260710000294", "20260623000235", "20260313000882", "20251210000477", "20251201000475"]
+RNS = ["20251024000268", "20250131000376", "20250114000473", "20250114000177", "20240620000389", "20240423000026", "20240206000142", "20231030000175", "20231012000068", "20230725000127"]
 KW = re.compile(r"의무보유|보호예수|매각제한|계속보유|확약|유통")
 NAME = re.compile(r"^[가-힣]{2,4}(\s*외\s*\d+\s*인)?$")
 SAFE = re.compile(r"주주|대표|최대|특수|관계|본인|임원|직원|기간|개월|년|합계|소계|상장|보통주|우선주|확약|보유|제한|등기|미등기|배우자|자녀|부|모|형제|친인척|계열|기타|해당|비고|구분|성명|주식|수량|비율|일반")
@@ -28,13 +27,14 @@ def main():
             out.append({"rn": rn, "err": str(err)}); continue
         rows = [r for r in C.doc_rows(txt) if any(c.strip() for c in r)]
         flat = [L.nz(" ".join(r)) for r in rows]
-        hits = [i for i, f in enumerate(flat) if KW.search(f) and len(f) < 400]
+        hits = [i for i, f in enumerate(flat) if re.search(r"매각제한|의무보유|보호예수|확약기간", f) and re.search(r"기간", f)
+                and re.search(r"주주명|성명|주주", f) and len(f) < 400]
         blocks, last = [], -99
         for i in hits:
             if i <= last:
                 continue
-            blocks.append({"i": i, "rows": [[mask(c) for c in rows[k]] for k in range(i, min(len(rows), i + 8))]})
-            last = i + 7
+            blocks.append({"i": i, "rows": [[mask(c) for c in rows[k]] for k in range(i, min(len(rows), i + 14))]})
+            last = i + 13
             if len(blocks) >= 30:
                 break
         p = L.parse_ipo(rows)
