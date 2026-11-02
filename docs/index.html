@@ -158,6 +158,15 @@ tbody tr.click:hover{background:var(--surface-2)}
 .filters select,.filters input[type=text]{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;outline:none}
 .filters input[type=text]{min-width:160px}
 .filters label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2)}
+.subnav{display:flex;gap:6px;margin:0 0 12px}
+.subnav button{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600}
+.subnav button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.segchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.segchip{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 12px;cursor:pointer;text-align:left;color:var(--ink)}
+.segchip.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink) inset}
+.segchip b{font-size:16px;margin-left:6px}
+.segchip .hz{display:block;font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.ratebox{margin-top:14px}.ratebox summary{cursor:pointer;list-style:revert}
 .seg-btns{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
 .seg-btns button{background:none;border:0;padding:6px 11px;cursor:pointer;color:var(--ink-2)}
 .seg-btns button.on{background:var(--ink);color:var(--surface)}
@@ -325,11 +334,8 @@ tbody tr.click:hover{background:var(--surface-2)}
     <button data-tab="brief" class="on">브리핑</button>
     <button data-tab="flow">자금 동향</button>
     <button data-tab="owner">대주주(개인)</button>
-    <button data-tab="lock">보호예수</button>
     <button data-tab="cal">만기 캘린더</button>
     <button data-tab="screen">여유자금 법인</button>
-    <button data-tab="prod">자금 성격별</button>
-    <button data-tab="rate">금리</button>
     <button data-tab="issue">주요 이슈</button>
   </nav>
 </header>
@@ -367,6 +373,9 @@ tbody tr.click:hover{background:var(--surface-2)}
         <div class="list" id="brief-news"></div>
       </div>
     </div>
+    <details class="card ratebox" id="t-rate">
+      <summary><h3 style="display:inline">금리 상세</h3> <span class="sub" style="font-weight:400">국내·미국 금리, 한미 금리차, 추이 차트 — 눌러서 펼치기</span></summary>
+    </details>
   </section>
 
   <!-- 자금 동향 -->
@@ -410,6 +419,7 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 대주주(개인) -->
   <section class="tab" id="t-owner">
+    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button></div>
     <h2>대주주(개인) 자금 동향</h2>
     <p class="sub">최대주주와 특수관계인 <b>개인</b>의 지분 매각·매도 계획·경영권 양도·증여·상속·주식담보·배당 수령. 금액에 <span class="tag gray">추정</span>이 붙은 건은 원문에 단가가 없어 종가나 주당배당금으로 계산한 값입니다.</p>
     <div class="grid g4" id="ow-kpis" style="margin-bottom:14px"></div>
@@ -431,10 +441,11 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="meta" id="ow-foot" style="margin-top:8px"></p>
   </section>
 
-  <!-- 보호예수 -->
+  <!-- 대주주 락업 해제 (대주주 탭 안의 하위 화면) -->
   <section class="tab" id="t-lock">
-    <h2>대주주 보호예수 해제 일정</h2>
-    <p class="sub">IPO 증권신고서의 최대주주등 의무보유(매각제한) 표, 제3자배정 유상증자의 배정 대상자별 보호예수를 <b>사람별</b>로 모았습니다. 해제일부터 팔거나 담보로 쓸 수 있어 매각 자금·담보대출 수요가 생기는 시점입니다.
+    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button></div>
+    <h2>대주주 락업 해제 일정</h2>
+    <p class="sub">IPO 증권신고서의 최대주주등 의무보유(매각제한) 표, 제3자배정 유상증자의 배정 대상자별 보호예수(락업)를 <b>사람별</b>로 모았습니다. 해제일부터 팔거나 담보로 쓸 수 있어 매각 자금·담보대출 수요가 생기는 시점입니다.
       <br><span class="meta">해제 예정일 = 상장일(상장 전이면 납입일+4일 추정)·신주 상장예정일 + 의무보유 기간. 평가액 = 주식수 × 최근 종가(상장 전은 공모가·발행가). 기간 연장·조기 해제·이미 판 주식은 반영되지 않으니 원문으로 확인하세요.</span></p>
     <div class="grid g4" id="lk-kpis" style="margin-bottom:14px"></div>
     <div class="filters">
@@ -469,7 +480,7 @@ tbody tr.click:hover{background:var(--surface-2)}
         <button data-v="past30">지난 30일</button><button data-v="n30">향후 30일</button><button data-v="n90" class="on">향후 90일</button><button data-v="n180">6개월</button><button data-v="n365">1년</button>
       </div>
       <div class="seg-btns" id="cal-kind">
-        <button data-v="" class="on">전체</button><button data-v="회사채 만기">회사채</button><button data-v="메자닌 만기">메자닌</button><button data-v="주식담보 만기">주식담보</button><button data-v="대여금 회수">대여금 회수</button><button data-v="보호예수 해제">보호예수</button>
+        <button data-v="" class="on">전체</button><button data-v="회사채 만기">회사채</button><button data-v="메자닌 만기">메자닌</button><button data-v="주식담보 만기">주식담보</button><button data-v="대여금 회수">대여금 회수</button><button data-v="락업 해제">락업 해제</button>
       </div>
       <select id="cal-min"><option value="0">모든 금액</option><option value="1000000000" selected>10억 이상</option><option value="10000000000">100억 이상</option><option value="50000000000">500억 이상</option></select>
       <select id="cal-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="E">비상장</option></select>
@@ -484,6 +495,7 @@ tbody tr.click:hover{background:var(--surface-2)}
   <section class="tab" id="t-screen">
     <h2>여유자금 법인 스크리너</h2>
     <p class="sub">현금성자산 총량(현금 + 단기금융상품)·현금/자산·현금증감·유입공시 각 25점, 100점 만점. 순현금은 참고용(점수 미반영). 행을 누르면 상세.</p>
+    <div class="segchips" id="segchips"></div>
     <div class="filters">
       <select id="s-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
       <select id="s-seg"><option value="">모든 자금 성격</option></select>
@@ -501,13 +513,6 @@ tbody tr.click:hover{background:var(--surface-2)}
       <span><span class="why">재무 미확보</span> 재무제표 없음</span></div>
     <div class="tw"><table id="scTable"></table></div>
     <p class="disclaimer">재무는 DART 최근 정기보고서 기준이며 차입금은 계정명 기반 근사치입니다. 상세 화면의 기준 보고서를 함께 확인하세요.</p>
-  </section>
-
-  <!-- 자금 성격별 -->
-  <section class="tab" id="t-prod">
-    <h2>자금 성격별 법인</h2>
-    <p class="sub">자금 유입 시점과 현금/자산 비중으로 예상 운용기간을 나눴습니다. 점수순.</p>
-    <div class="grid g3" id="segcards"></div>
   </section>
 
   <!-- 주요 이슈 -->
@@ -877,23 +882,35 @@ function init(data) {
   if (D.meta.warnings?.length) b += `<details class="banner warn"><summary>수집 경고 ${D.meta.warnings.length}건</summary><ul>${D.meta.warnings.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>`;
   $("#banners").innerHTML = b;
 
+  (D.calendar?.items || []).forEach(i => { if (i.kind === "보호예수 해제") i.kind = "락업 해제"; });   // 예전 데이터 이름
   renderBrief(); initFlow(); initOwner(); initLock(); initCal(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
   $$("#nav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
+  $$(".subnav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.sub));
+  $("#t-rate").addEventListener("toggle", e => { if (e.target.open) drawRateCharts(); });
   const h = location.hash.slice(1);
   if (h.startsWith("c=")) openCompany(h.slice(2)); else if (/^[a-z]+$/.test(h)) showTab(h);
 }
 
+const TAB_ALIAS = {prod: "screen"};          // 없앤 탭 주소(#prod)는 옮겨 간 곳으로
+const NAV_PARENT = {lock: "owner"};           // 대주주 탭 안의 하위 화면
 function showTab(t) {
-  if (!$("#t-" + t)) return;
-  $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  t = TAB_ALIAS[t] || t;
+  if (t === "rate") { showTab("brief"); openRates(); return; }
+  if (!$("section#t-" + t)) return;
+  $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === (NAV_PARENT[t] || t)));
+  $$(".subnav button").forEach(b => b.classList.toggle("on", b.dataset.sub === t));
   $$("section.tab").forEach(s => s.classList.toggle("on", s.id === "t-" + t));
   history.replaceState(null, "", "#" + t);
   // 탭 이동을 '페이지 조회'로 기록 → 애널리틱스 '페이지 제목별 조회수'에 탭 이름으로 집계
-  try { if (window.gtag) gtag("event", "page_view", {page_title: ($(`#nav button[data-tab="${t}"]`)?.textContent || t), page_location: location.href}); } catch(e) {}
+  try { if (window.gtag) gtag("event", "page_view", {page_title: (t === "lock" ? "대주주 락업해제" : $(`#nav button[data-tab="${t}"]`)?.textContent || t), page_location: location.href}); } catch(e) {}
   if (t === "flow") drawFlowChart();
   if (t === "cal") drawCalChart();
-  if (t === "rate") drawRateCharts();
   window.scrollTo({top: 0});
+}
+function openRates() {
+  const d = $("#t-rate"); if (!d) return;
+  d.open = true; drawRateCharts();
+  setTimeout(() => d.scrollIntoView({behavior: "smooth", block: "start"}), 50);
 }
 
 /* ── 브리핑 ── */
@@ -931,9 +948,10 @@ function renderBrief() {
     const diff = r.prev == null ? null : Math.round((r.latest - r.prev) * 100);
     const cls = diff == null || diff === 0 ? "flat" : diff > 0 ? "up" : "dn";
     const dt = diff == null ? "" : `<span class="d ${cls}">${diff > 0 ? "▲" : diff < 0 ? "▼" : "–"}${Math.abs(diff)}bp</span>`;
-    return `<div class="rate click" onclick="location.hash='rate'"><div class="n">${esc(r.name)}${r.cycle === "M" ? ` <span class="meta">${+r.date.slice(4)}월</span>` : ""}</div><div class="v">${r.latest.toFixed(2)}%${dt}</div></div>`;
+    return `<div class="rate click" data-rate="1" title="눌러서 금리 상세 보기"><div class="n">${esc(r.name)}${r.cycle === "M" ? ` <span class="meta">${+r.date.slice(4)}월</span>` : ""}</div><div class="v">${r.latest.toFixed(2)}%${dt}</div></div>`;
   }).join("") || "";
   if (!D.rates?.length) $("#rates").style.display = "none";
+  $$("#rates [data-rate]").forEach(el => el.onclick = openRates);
 
   const sig = [];
   const seen = new Set();
@@ -1236,7 +1254,7 @@ function renderOwner() {
   bindCo($("#owTable"));
 }
 
-/* ── 보호예수 ── */
+/* ── 대주주 락업 해제 ── */
 const LK_COLS = {
   date: {l: "해제 예정일", v: i => i.date, def: 1}, name: {l: "법인", v: i => i.corp_name, def: 1},
   person: {l: "대주주 (관계)", v: i => i.person, def: 1}, shares: {l: "주식수", v: i => i.shares || null, def: -1},
@@ -1246,7 +1264,7 @@ const LK_COLS = {
 const lkRange = r => r === "all" ? ["0000", "9999"] : calRange(r);
 function initLock() {
   const L = D.lockup;
-  if (!L) { $("#t-lock").insertAdjacentHTML("beforeend", `<div class="card empty">보호예수 데이터는 다음 갱신부터 표시됩니다.</div>`); return; }
+  if (!L) { $("#t-lock").insertAdjacentHTML("beforeend", `<div class="card empty">락업 해제 데이터는 다음 갱신부터 표시됩니다.</div>`); return; }
   const o = st.lk;
   const seg = (id, key) => $$(`#${id} button`).forEach(b => b.onclick = () => {
     $$(`#${id} button`).forEach(x => x.classList.toggle("on", x === b)); o[key] = b.dataset.v; renderLock();
@@ -1291,7 +1309,7 @@ function renderLock() {
       <td class="num">${i.amount ? (i.amount >= 1e8 ? eok(i.amount) : (i.amount / 1e4).toFixed(0) + "만") : "-"}<div class="meta">${esc(i.px_kind || "")}${i.px ? " " + i.px.toLocaleString() + "원" : ""}</div></td>
       <td>${esc(i.period)}<div class="meta">${esc(i.base_kind)} ${esc((i.base || "").replaceAll("-", "."))}</div></td>
       <td><span class="tag k-lock">${esc(i.src)}</span></td>
-      <td>${DART_LINK(i, "원문")}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">조건에 맞는 보호예수 해제가 없습니다.</td></tr>`}</tbody>`;
+      <td>${DART_LINK(i, "원문")}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">조건에 맞는 락업 해제가 없습니다.</td></tr>`}</tbody>`;
   $$("#lkTable th.sort").forEach(h => h.onclick = () => { const k = h.dataset.k;
     if (o.sort === k) o.dir *= -1; else { o.sort = k; o.dir = LK_COLS[k].def; } renderLock(); });
   bindCo($("#lkTable"));
@@ -1302,7 +1320,7 @@ const CAL_KIND = {"회사채 만기": {c: "k-bond", col: "#1f6feb", hint: "만�
   "메자닌 만기": {c: "k-mezz", col: "#7c4ddb", hint: "미전환 잔액 상환 — 상환 재원 준비"},
   "주식담보 만기": {c: "k-pledge", col: "#c08a00", hint: "대주주 개인 대출 만기 — 대환·연장 수요"},
   "대여금 회수": {c: "k-loan", col: "#0e9f6e", hint: "빌려준 돈이 돌아오는 날 — 자금 유입"},
-  "보호예수 해제": {c: "k-lock", col: "#d1495b", hint: "대주주 의무보유 해제 — 매각 자금·담보대출 수요 (평가액은 종가 기준)"}};
+  "락업 해제": {c: "k-lock", col: "#d1495b", hint: "대주주 의무보유 해제 — 매각 자금·담보대출 수요 (평가액은 종가 기준)"}};
 const CAL_COLS = {
   date: {l: "만기일", v: i => i.date, def: 1}, kind: {l: "유형", v: i => i.kind, def: 1},
   name: {l: "법인", v: i => i.corp_name, def: 1}, label: {l: "내용", v: i => i.label, def: 1},
@@ -1419,6 +1437,7 @@ function renderScreen() {
     return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * s.dir;
   });
   $("#sc-count").textContent = `${rows.length.toLocaleString()}개사`;
+  $$("#segchips .segchip").forEach(b => b.classList.toggle("on", b.dataset.seg === s.seg));
   $("#scTable").innerHTML = `<thead><tr>${SC_COLS.map(c => `<th class="sort ${c.num ? "num" : ""} ${c.m ? "hide-m" : ""} ${s.sort === c.k ? (s.dir > 0 ? "asc" : "desc") : ""}" data-k="${c.k}"${c.tip ? ` title="${esc(c.tip)}"` : ""}>${c.l}</th>`).join("")}</tr></thead>
   <tbody>${rows.slice(0, 500).map(c => {
     const m = c.metrics;
@@ -1440,25 +1459,20 @@ function renderScreen() {
   bindCo($("#scTable"));
 }
 
-/* ── 자금 성격별 ── */
+/* ── 자금 성격별 (여유자금 법인 화면 위 칩) ── */
 function renderProducts() {
-  $("#segcards").innerHTML = D.segments.filter(s => s.id !== "watch").map(s => {
-    const cos = D.companies.filter(c => c.segment === s.id);
-    return `<div class="card segcard">
-      <h3>${segTag(s.id)} <span class="hz">${esc(s.horizon)}</span></h3>
-      <div class="cond">${esc(s.condition)}</div>
-      <div class="big">${cos.length.toLocaleString()}<small style="font-size:13px;color:var(--ink-3);font-weight:500"> 개사</small></div>
-      <div class="list" style="margin-top:10px">${cos.slice(0, 8).map(c => `
-        <div class="li click" data-co="${esc(c.corp_code)}"><div><div class="t">${esc(c.name)}</div>
-        <div class="d">${c.metrics ? `순현금 ${eok(c.metrics.net_cash)}` : "재무 미확보"}${c.last_event_date ? ` · ${dshort(c.last_event_date)} 공시` : ""}</div></div>
-        <div class="r">${scoreCell(c.score)}</div></div>`).join("") || `<div class="empty">해당 법인 없음</div>`}</div>
-      ${cos.length > 8 ? `<a href="#" data-seg="${esc(s.id)}" style="font-size:12.5px">전체 ${cos.length}개사 보기 →</a>` : ""}
-    </div>`;
-  }).join("");
-  bindCo($("#segcards"));
-  $$("#segcards a[data-seg]").forEach(a => a.onclick = e => {
-    e.preventDefault(); st.sc.seg = a.dataset.seg; $("#s-seg").value = a.dataset.seg; renderScreen(); showTab("screen");
-  });
+  const draw = () => {
+    $("#segchips").innerHTML = D.segments.filter(g => g.id !== "watch").map(g => {
+      const n = D.companies.filter(c => c.segment === g.id).length;
+      return `<button class="segchip ${st.sc.seg === g.id ? "on" : ""}" data-seg="${esc(g.id)}" title="${esc(g.condition)}">${segTag(g.id)}<b>${n.toLocaleString()}</b><small class="meta">개사</small><span class="hz">${esc(g.horizon)}</span></button>`;
+    }).join("");
+    $$("#segchips .segchip").forEach(b => b.onclick = () => {
+      st.sc.seg = st.sc.seg === b.dataset.seg ? "" : b.dataset.seg;   // 다시 누르면 해제
+      $("#s-seg").value = st.sc.seg; renderScreen(); draw();
+    });
+  };
+  draw();
+  $("#s-seg").addEventListener("change", draw);
 }
 
 /* ── 금리 ── */
@@ -1707,7 +1721,7 @@ function openCompany(code) {
 function lockCard(code) {
   const L = (D.lockup?.items || []).filter(i => i.corp_code === code).sort((a, b) => a.date.localeCompare(b.date));
   if (!L.length) return "";
-  return `<div class="card"><h3>보호예수 해제 <span class="sub" style="font-weight:400">${L.length}명</span></h3><table><tbody>${
+  return `<div class="card"><h3>대주주 락업 해제 <span class="sub" style="font-weight:400">${L.length}명</span></h3><table><tbody>${
     L.slice(0, 30).map(i => `<tr><td>${esc(i.date.replaceAll("-", "."))}<div class="meta">${dday(i.date)}</div></td>
       <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "")}</div></td>
       <td class="num">${i.shares ? i.shares.toLocaleString() + "주" : "-"}</td>
@@ -1756,12 +1770,12 @@ function closeCompany() {
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeCompany(); });
 let _rsz;
 window.addEventListener("resize", () => { clearTimeout(_rsz); _rsz = setTimeout(() => {
-  const t = $("#nav button.on")?.dataset.tab; if (t === "rate") drawRateCharts(); if (t === "flow") drawFlowChart(); }, 200); });
+  const t = $("#nav button.on")?.dataset.tab; if (t === "brief" && $("#t-rate")?.open) drawRateCharts(); if (t === "flow") drawFlowChart(); }, 200); });
 window.addEventListener("hashchange", () => {
   const h = location.hash.slice(1);
   if (!D) return;
   if (h.startsWith("c=")) openCompany(h.slice(2));
-  else if (/^[a-z]+$/.test(h) && $("#t-" + h)) { closeCompany(); showTab(h); }
+  else if (/^[a-z]+$/.test(h)) { closeCompany(); showTab(h); }
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeCompany(); });
 })();
