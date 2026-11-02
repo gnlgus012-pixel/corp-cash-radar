@@ -26,7 +26,10 @@ import holders as H  # noqa: E402
 
 STORE_PATH = C.CACHE_DIR / "lockup.json"
 CHECK_OUT = C.ROOT / "lockup_check.json"      # 검증용 (개인 이름 포함 → 저장소에 올리지 않고 Actions 산출물로만)
-PARSE_VER = "l1"
+PARSE_VER = "l2"   # IPO 해석 버전. 증자는 RIGHTS_VER
+RIGHTS_VER = "l1"
+# l2: 기간 칸 각주 「30개월(주1)」 인식, 발행조건확정본에 표가 없으면 이전 신고서 읽기
+SCAN_VER = "s2"    # s2: IPO는 정정 전 원본까지 목록에 (last_reprt_at=N)
 BUILD_RESERVE = int(os.environ.get("LOCKUP_BUILD_RESERVE_SEC", "240"))
 IPO_YEARS = 3.3
 RIGHTS_MONTHS = 26
@@ -47,7 +50,7 @@ def nz(s: str) -> str:
 
 def period_of(cell: str):
     """'3년' '30개월' '2년 6개월' '상장일로부터 1년' → (개월 수, 원문)"""
-    t = (cell or "").strip()
+    t = re.sub(r"\(?\*?주\s*\d+\)?|\(\*\d*\)|\*+\d*", "", cell or "").strip()   # 각주 표시 제거
     if not t or len(t) > 16:
         return None
     m = PERIOD_RX.match(t)
@@ -118,6 +121,7 @@ def parse_ipo(rows: list[list[str]]) -> dict:
                 and re.search(r"주주명|성명|주주", h)):
             i += 1
             continue
+        out["tbl"] = out.get("tbl", 0) + 1
         header = " ".join(flat[i:i + 3])
         restricted_col = "매각제한물량" in header or "매각제한주식" in header or "확약주식수" in header
         prev = None
@@ -239,8 +243,11 @@ def parse_rights(rows: list[list[str]]) -> dict:
 
 
 # ───────────────────────── 수집 ─────────────────────────
-def scan(store: dict, key: str, ty: str, days: int, want, today: date) -> None:
+def scan(store: dict, key: str, ty: str, days: int, want, today: date, last: str = "Y") -> None:
     sc = store.setdefault("scan", {}).setdefault(key, {})
+    if last == "N" and sc.get("v") != SCAN_VER:
+        sc.clear()
+        sc["v"] = SCAN_VER
     floor = today - timedelta(days=days)
     windows = [(today - timedelta(days=10), today)]
     cur_end = C.parse_ymd(sc["from"]) - timedelta(days=1) if sc.get("from") else today - timedelta(days=11)
@@ -251,7 +258,7 @@ def scan(store: dict, key: str, ty: str, days: int, want, today: date) -> None:
     for a, b in windows:
         page = 1
         while True:
-            j = C.dart_get("list.json", bgn_de=C.ymd(a), end_de=C.ymd(b), pblntf_ty=ty, last_reprt_at="Y",
+            j = C.dart_get("list.json", bgn_de=C.ymd(a), end_de=C.ymd(b), pblntf_ty=ty, last_reprt_at=last,
                            page_no=page, page_count=100)
             STATS[f"list_{key}"] += 1
             for r in j.get("list") or []:
@@ -264,36 +271,78 @@ def scan(store: dict, key: str, ty: str, days: int, want, today: date) -> None:
             page += 1
         if a != today - timedelta(days=10) and (not sc.get("from") or C.ymd(a) < sc["from"]):
             sc["from"] = C.ymd(a)
+            sc["v"] = SCAN_VER if last == "N" else sc.get("v")
         C.save_json(STORE_PATH, store)
 
 
-def latest_ipo_per_corp(docs: dict) -> set:
-    """한 회사의 IPO 신고서는 정정·발행조건확정이 여러 개 → 회사별 최신 것만 읽는다 (120일 안 묶음)"""
-    keep, by = set(), {}
+def ipo_clusters(docs: dict) -> list[list[str]]:
+    """한 회사의 IPO 신고서(원본·기재정정·발행조건확정)를 120일 안 묶음으로 — 최신순"""
+    by = {}
     for rn, d in docs.items():
         if d["kind"] == "ipo":
             by.setdefault(d["corp_code"], []).append(rn)
+    out = []
     for rns in by.values():
         rns.sort(reverse=True)
-        last = None
+        cur = []
         for rn in rns:
-            if last is None or (C.parse_ymd(docs[last]["date"]) - C.parse_ymd(docs[rn]["date"])).days > 120:
-                keep.add(rn)
-                last = rn
-    return keep
+            if cur and (C.parse_ymd(docs[cur[0]]["date"]) - C.parse_ymd(docs[rn]["date"])).days > 120:
+                out.append(cur)
+                cur = []
+            cur.append(rn)
+        out.append(cur)
+    return out
+
+
+def _done(d: dict) -> bool:
+    return d.get("pv") == _ver(d) or d.get("tries", 0) >= 4
+
+
+def _ver(d: dict) -> str:
+    return PARSE_VER if d["kind"] == "ipo" else RIGHTS_VER
+
+
+def ipo_todo(docs: dict) -> list[str]:
+    """묶음마다 최신본부터 — 의무보유 표가 나올 때까지 이전 신고서를 차례로 (발행조건확정본엔 표가 빠진 경우가 많음)"""
+    todo = []
+    for cl in ipo_clusters(docs):
+        for rn in cl:
+            d = docs[rn]
+            if not _done(d):
+                todo.append(rn)
+                break
+            p = d.get("parsed") or {}
+            if p.get("people") or p.get("tbl") or (rn == cl[0] and not p.get("ipo")):
+                break
+    return todo
+
+
+def ipo_pick(docs: dict) -> list[tuple[str, str]]:
+    """(최신본, 사람이 잡힌 신고서) — 납입일·가격은 최신본, 사람은 표가 있는 신고서"""
+    out = []
+    for cl in ipo_clusters(docs):
+        src = next((rn for rn in cl if docs[rn].get("pv") == PARSE_VER and (docs[rn].get("parsed") or {}).get("people")), None)
+        out.append((cl[0], src))
+    return out
 
 
 def parse_pending(store: dict) -> None:
     docs = store["docs"]
-    ipo_keep = latest_ipo_per_corp(docs)
-    todo = [rn for rn, d in docs.items() if d.get("pv") != PARSE_VER and (d["kind"] != "ipo" or rn in ipo_keep)
-            and d.get("tries", 0) < 4]
-    todo.sort(reverse=True)
     n = 0
+    while True:   # IPO는 표가 없으면 다음 바퀴에 이전 신고서를 읽음
+        todo = [rn for rn, d in docs.items() if d["kind"] != "ipo" and not _done(d)] + ipo_todo(docs)
+        if not todo or n >= MAX_DOCS:
+            STATS["deferred"] += len(todo)
+            break
+        todo.sort(reverse=True)
+        n = _parse_docs(store, todo, n)
+
+
+def _parse_docs(store: dict, todo: list[str], n: int) -> int:
+    docs = store["docs"]
     for rn in todo:
         if n >= MAX_DOCS:
-            STATS["deferred"] += 1
-            continue
+            break
         d = docs[rn]
         txt, err = C.dart_document(rn)
         n += 1
@@ -304,11 +353,12 @@ def parse_pending(store: dict) -> None:
             continue
         rows = [r for r in C.doc_rows(txt) if any(c.strip() for c in r)]
         d["parsed"] = parse_ipo(rows) if d["kind"] == "ipo" else parse_rights(rows)
-        d["pv"] = PARSE_VER
+        d["pv"] = _ver(d)
         d.pop("err", None)
         STATS[f"parsed_{d['kind']}"] += 1
         if n % 20 == 0:
             C.save_json(STORE_PATH, store)
+    return n
 
 
 def _d(s: str) -> date:
@@ -334,11 +384,18 @@ def first_trade(prices: dict, code: str, after: str, today: date):
 def build(store: dict, prices: dict, today: date, corp_map: dict) -> list[dict]:
     items = []
     lo = today - timedelta(days=30)
-    ipo_keep = latest_ipo_per_corp(store["docs"])
-    for rn, d in store["docs"].items():
-        if d["kind"] == "ipo" and rn not in ipo_keep:
+    docs = store["docs"]
+    work = [(rn, d, d.get("parsed")) for rn, d in docs.items() if d["kind"] != "ipo"]
+    for head, src_rn in ipo_pick(docs):
+        if not src_rn:
             continue
-        p = d.get("parsed")
+        hp, sp = docs[head].get("parsed") or {}, docs[src_rn]["parsed"]
+        if docs[head].get("pv") == PARSE_VER and not hp.get("ipo"):
+            continue
+        meta = {"ipo": True, "pay_date": hp.get("pay_date") or sp.get("pay_date"),
+                "price": hp.get("price") or sp.get("price"), "people": sp["people"]}
+        work.append((src_rn, docs[head], meta))
+    for rn, d, p in work:
         if not p or not p.get("people"):
             continue
         C.check_time()
@@ -388,7 +445,7 @@ def main() -> int:
     store = C.load_json(STORE_PATH, {"docs": {}})
     store.setdefault("docs", {})
     try:
-        scan(store, "ipo", "C", int(365 * IPO_YEARS), lambda n: "증권신고서(지분증권)" in n, today)
+        scan(store, "ipo", "C", int(365 * IPO_YEARS), lambda n: "증권신고서(지분증권)" in n, today, last="N")
         scan(store, "rights", "B", RIGHTS_MONTHS * 31,
              lambda n: "유상증자결정" in n and "자회사" not in n and "종속회사" not in n and "철회" not in n, today)
     except (C.OutOfTime, C.DartError) as ex:
@@ -412,15 +469,14 @@ def main() -> int:
         C.warn("시간 부족으로 보호예수 항목 생략")
     C.save_json(H.PRICE_PATH, prices)
     docs = store["docs"]
-    keep = latest_ipo_per_corp(docs)
-    pend = sum(1 for rn, d in docs.items() if d.get("pv") != PARSE_VER and (d["kind"] != "ipo" or rn in keep)
-               and d.get("tries", 0) < 4)
+    pend = sum(1 for d in docs.values() if d["kind"] != "ipo" and not _done(d)) + len(ipo_todo(docs))
+    picks = ipo_pick(docs)
     status = {"generated_at": C.now_kst().isoformat(timespec="minutes"), "items": len(items),
               "by_src": Counter(i["src"] for i in items), "docs": Counter(d["kind"] for d in docs.values()),
-              "ipo_docs_read": sum(1 for d in docs.values() if d["kind"] == "ipo" and d.get("parsed")),
-              "ipo_with_people": sum(1 for d in docs.values() if d["kind"] == "ipo" and (d.get("parsed") or {}).get("ipo")
-                                     and d["parsed"].get("people")),
-              "ipo_flag": sum(1 for d in docs.values() if d["kind"] == "ipo" and (d.get("parsed") or {}).get("ipo")),
+              "ipo_docs_read": sum(1 for d in docs.values() if d["kind"] == "ipo" and d.get("pv") == PARSE_VER),
+              "ipo_clusters": len(picks),
+              "ipo_flag": sum(1 for h, _ in picks if (docs[h].get("parsed") or {}).get("ipo")),
+              "ipo_with_people": sum(1 for h, s in picks if s and (docs[h].get("parsed") or {}).get("ipo")),
               "rights_third": sum(1 for d in docs.values() if d["kind"] == "rights" and (d.get("parsed") or {}).get("third")),
               "rights_with_people": sum(1 for d in docs.values() if d["kind"] == "rights" and (d.get("parsed") or {}).get("people")),
               "pending": pend, "scan_from": {k: v.get("from") for k, v in store.get("scan", {}).items()},
@@ -431,13 +487,15 @@ def main() -> int:
               "stats": STATS}
     C.save_json(C.ROOT / "reports" / "lockup_status.json", status)   # 공개용: 건수·회사명만
     if CHECK:   # 공개용 진단: 회사명·접수번호·보고서명만 (개인 이름 없음)
-        miss = [{"corp": d["corp_name"], "rcept_no": rn, "report_nm": d.get("report_nm", ""), "date": d["date"],
-                 "pay_date": (d.get("parsed") or {}).get("pay_date"), "err": d.get("err")}
-                for rn, d in sorted(docs.items(), reverse=True)
-                if d["kind"] == "ipo" and rn in keep and (d.get("parsed") or {}).get("ipo") and not d["parsed"].get("people")]
-        hit = [{"corp": d["corp_name"], "rcept_no": rn, "report_nm": d.get("report_nm", ""), "date": d["date"]}
-               for rn, d in sorted(docs.items(), reverse=True)
-               if d["kind"] == "ipo" and rn in keep and (d.get("parsed") or {}).get("people")]
+        def brief(rn):
+            d = docs[rn]
+            return {"rcept_no": rn, "report_nm": d.get("report_nm", ""), "date": d["date"],
+                    "tbl": (d.get("parsed") or {}).get("tbl"), "n": len((d.get("parsed") or {}).get("people") or []),
+                    "err": d.get("err")}
+        cl = {c[0]: c for c in ipo_clusters(docs)}
+        miss = [{"corp": docs[h]["corp_name"], "versions": [brief(r) for r in cl[h]]}
+                for h, s in sorted(picks, reverse=True) if not s and (docs[h].get("parsed") or {}).get("ipo")]
+        hit = [{"corp": docs[h]["corp_name"], "head": h, "src": s} for h, s in sorted(picks, reverse=True) if s]
         C.save_json(C.ROOT / "reports" / "lockup_diag.json", {"ipo_no_people": miss, "ipo_with_people": hit})
         C.save_json(CHECK_OUT, {"items": items, "ipo_samples": [
             {"rcept_no": rn, "corp": d["corp_name"], **(d.get("parsed") or {})}
