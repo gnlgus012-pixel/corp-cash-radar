@@ -1,0 +1,63 @@
+name: 상장 주관사 채우기 (수동)
+
+# 상장 주관사(IPO 신고서 인수인) 수집. 화면 데이터 복호화 → 주관사 붙임 → 다시 암호화.
+on:
+  workflow_dispatch:
+    inputs:
+      probe:
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar-update
+  cancel-in-progress: false
+
+jobs:
+  underwriter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main   # 트리거 커밋이 아니라 최신 main (그 사이 올라온 데이터 커밋과 충돌 방지)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: 캐시 복원
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+          restore-keys: radar-cache-
+      - run: pip install -r requirements.txt && mkdir -p cache
+      - name: 화면 데이터 복호화
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: python scripts/seal.py open docs/data/data.enc docs/data/data.json
+      - name: 상장 주관사
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          RADAR_TIME_BUDGET_MIN: "30"
+        run: python scripts/underwriter.py ${{ inputs.probe && '--probe' || '' }}
+      - name: 암호화
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          SITE_USERS: ${{ secrets.SITE_USERS }}
+          VISIT_LOG_URL: ${{ secrets.VISIT_LOG_URL }}
+        run: python scripts/seal.py seal docs/data/data.json docs/data/data.enc
+      - name: 캐시 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+      - name: 결과 반영
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A docs/data/ reports/
+          git diff --cached --quiet || { git commit -m "data: $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M') 주관사 채우기"; git pull --rebase -X theirs origin main; git push; }
