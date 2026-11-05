@@ -160,6 +160,9 @@ tbody tr.click:hover{background:var(--surface-2)}
 .filters label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2)}
 .tag.k-uw-kis{background:#fff1e6;color:#b45309}.uw-kis{color:#b45309;font-weight:600}
 :root[data-theme="dark"] .tag.k-uw-kis{background:#3b2a16;color:#f6ad55}
+.tag.unl{background:transparent;color:#64748b;border:1px dashed #94a3b8}
+.tag.unl-ipo{background:#ecfdf5;color:#047857;border:1px dashed #34d399}
+.show-m{display:none}@media (max-width:640px){.show-m{display:inline}}
 .subnav{display:flex;gap:6px;margin:0 0 12px}
 .subnav button{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600}
 .subnav button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
@@ -985,7 +988,7 @@ function renderBrief() {
   $("#bigIn").innerHTML = big.slice(0, 6).map(({e, k, v}) => `
     <div class="li click" data-co="${esc(e.corp_code)}">
       <div class="dt">${v.slice(5).replace("-", ".")}<div class="dd">${wd(v)}요일</div></div>
-      <div><div class="t">${esc(e.corp_name)} <span class="tag gray">${esc(k)}</span>${e.category === "IPO 공모" ? ' <span class="tag in">IPO</span>' : ""}</div>
+      <div><div class="t">${esc(e.corp_name)}${unlTag(e.corp_code, e.corp_cls, e.category === "IPO 공모")} <span class="tag gray">${esc(k)}</span>${e.category === "IPO 공모" ? ' <span class="tag in">IPO</span>' : ""}</div>
       <div class="d">${typeTag(e.type)} ${esc(e.category)} · ${esc(e.detail.amount_label)} <b>${amtTxt(e.detail)}</b></div></div>
       <div class="r">${DART_LINK(e)}</div>
     </div>`).join("") || `<div class="empty">향후 30일 내 100억 이상 유입 일정이 없거나, 아직 공시 원문 수집 전입니다.</div>`;
@@ -1000,7 +1003,7 @@ function renderBrief() {
   $("#soonMat").innerHTML = mats.map(i => `
     <div class="li click" data-co="${esc(i.corp_code)}">
       <div class="dt">${i.date.slice(5).replace("-", ".")}<div class="dd">${dday(i.date)}</div></div>
-      <div><div class="t">${esc(i.corp_name)} <span class="tag ${CAL_KIND[i.kind]?.c || "gray"}">${esc(i.kind)}</span>${i.check ? ` <span class="tag tax">${esc(i.check)}</span>` : ""}</div>
+      <div><div class="t">${esc(i.corp_name)}${unlTag(i.corp_code, i.corp_cls)} <span class="tag ${CAL_KIND[i.kind]?.c || "gray"}">${esc(i.kind)}</span>${i.check ? ` <span class="tag tax">${esc(i.check)}</span>` : ""}</div>
       <div class="d">${esc(i.label || "")} · <b>${eok(i.amount)}</b></div></div>
       <div class="r">${DART_LINK(i)}</div></div>`).join("") || `<div class="empty">${D.calendar ? "향후 30일 내 만기가 없습니다." : "만기 데이터는 다음 갱신부터 표시됩니다."}</div>`;
   bindCo($("#soonMat"));
@@ -1108,7 +1111,7 @@ function renderFlow() {
       const c = CO_BY_CODE[e.corp_code];
       const sd = sch && e._sd ? `<td><b>${dfmt(e._sd[1].replaceAll("-", ""))}</b><div class="meta">${esc(SCHED_KIND[e._sd[0]] || e._sd[0])}</div></td>` : "";
       return `<tr class="click" data-co="${esc(e.corp_code)}">${sd}<td>${dfmt(e.date)}</td><td>${typeTag(e.type)}</td><td>${esc(e.category)}</td>
-      <td><b>${esc(e.corp_name)}</b></td><td class="hide-m">${{Y:"유가",K:"코스닥",N:"코넥스"}[e.corp_cls] || "기타"}</td>
+      <td><b>${esc(e.corp_name)}</b><span class="show-m">${unlTag(e.corp_code, e.corp_cls, e.category === "IPO 공모")}</span></td><td class="hide-m">${mktCell(e.corp_code, e.corp_cls, e.category === "IPO 공모")}</td>
       <td class="num">${c ? c.score.toFixed(0) : "-"}</td>
       <td>${evBrief(e) || '<span class="meta">-</span>'}</td>
       <td class="wrap">${esc(e.report_nm)} ${DART_LINK(e, "원문")}</td></tr>`;
@@ -1238,7 +1241,7 @@ function renderOwner() {
       return `<tr class="${CO_BY_CODE[i.corp_code] ? "click" : ""}" data-co="${esc(i.corp_code)}">
         <td>${dfmt(i.date)}</td>
         <td><span class="tag ${k}${i.cancelled ? " strike" : ""}" title="${esc(OW_HINT[k] || "")}">${esc(i.cat)}</span>${canc}</td>
-        <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y:"유가",K:"코스닥",N:"코넥스"}[i.corp_cls] || "기타"}</div></td>
+        <td><b>${esc(i.corp_name)}</b><div class="meta">${mktCell(i.corp_code, i.corp_cls)}</div></td>
         <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "-")}</div></td>
         <td class="num">${i.shares ? i.shares.toLocaleString() : "-"}</td>
         <td class="num">${amt}</td>
@@ -1268,6 +1271,21 @@ const uwTag = code => { const t = uwText(code); if (!t) return "";
   return `<span class="tag ${kis ? "k-uw-kis" : "gray"}" title="상장 대표주관사${u.co?.length ? " · 공동: " + u.co.join(", ") : ""}${u.under?.length ? " · 인수: " + u.under.join(", ") : ""}">주관 ${esc(t)}</span>`; };
 const uwMatch = (code, f) => { if (!f) return true; const u = uwOf(code); if (!u?.lead?.length) return false;
   const kis = [...u.lead, ...(u.co || [])].some(x => KIS_RX.test(x)); return f === "KIS" ? kis : !kis; };
+
+/* ── 비상장·상장 전 표시 ── */
+let LISTED_SET = null;   // 지금 상장돼 있는 회사 (분석 대상 시장 + IPO 후 거래가 시작된 회사)
+const isListedNow = (code, cls) => {
+  if (!LISTED_SET) { LISTED_SET = new Set(D.companies.filter(c => ["Y", "K", "N"].includes(c.market)).map(c => c.corp_code));
+    (D.lockup?.items || []).forEach(i => { if (i.base_kind === "상장일") LISTED_SET.add(i.corp_code); }); }
+  return ["Y", "K", "N"].includes(cls) || LISTED_SET.has(code);
+};
+const MKT_LBL = {Y: "유가", K: "코스닥", N: "코넥스"};
+// 시장 표시: 상장사면 시장명, 아니면 눈에 띄는 태그 (IPO 진행 중이면 '상장 전')
+const mktCell = (code, cls, ipo) => isListedNow(code, cls)
+  ? esc(MKT_LBL[cls] || MKT_LBL[CO_BY_CODE[code]?.market] || "상장")
+  : ipo ? '<span class="tag unl-ipo" title="IPO 진행 중 — 아직 상장 전">상장 전</span>'
+        : '<span class="tag unl" title="비상장 회사">비상장</span>';
+const unlTag = (code, cls, ipo) => isListedNow(code, cls) ? "" : " " + mktCell(code, cls, ipo);
 
 /* ── 대주주 락업 해제 ── */
 const LK_COLS = {
@@ -1319,7 +1337,7 @@ function renderLock() {
   $("#lkTable").innerHTML = `<thead><tr>${th("date")}${th("name")}${th("person")}${th("shares", "num")}${th("amount", "num")}${th("period")}${th("src")}<th>원문</th></tr></thead><tbody>${
     rows.slice(0, LIMIT).map(i => `<tr class="${CO_BY_CODE[i.corp_code] ? "click" : ""}" data-co="${esc(i.corp_code)}">
       <td><b>${esc(i.date.replaceAll("-", "."))}</b><div class="meta">${dday(i.date)}</div></td>
-      <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y: "유가", K: "코스닥", N: "코넥스"}[i.corp_cls] || "비상장·기타"}${i.src === "IPO" && uwText(i.corp_code) ? ` · <span class="${uwOf(i.corp_code).lead.some(f => KIS_RX.test(f)) ? "uw-kis" : ""}">주관 ${esc(uwText(i.corp_code))}</span>` : ""}</div></td>
+      <td><b>${esc(i.corp_name)}</b><div class="meta">${mktCell(i.corp_code, i.corp_cls, i.src === "IPO" && /추정/.test(i.base_kind || ""))}${i.src === "IPO" && uwText(i.corp_code) ? ` · <span class="${uwOf(i.corp_code).lead.some(f => KIS_RX.test(f)) ? "uw-kis" : ""}">주관 ${esc(uwText(i.corp_code))}</span>` : ""}</div></td>
       <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "-")}</div></td>
       <td class="num">${i.shares ? i.shares.toLocaleString() : "-"}</td>
       <td class="num">${i.amount ? (i.amount >= 1e8 ? eok(i.amount) : (i.amount / 1e4).toFixed(0) + "만") : "-"}<div class="meta">${esc(i.px_kind || "")}${i.px ? " " + i.px.toLocaleString() + "원" : ""}</div></td>
@@ -1389,7 +1407,7 @@ function renderCal() {
     rows.slice(0, LIMIT).map(i => `<tr class="${CO_BY_CODE[i.corp_code] ? "click" : ""}" data-co="${esc(i.corp_code)}">
       <td><b>${esc(i.date.replaceAll("-", "."))}</b><div class="meta">${dday(i.date)}</div></td>
       <td><span class="tag ${CAL_KIND[i.kind]?.c || "gray"}" title="${esc(CAL_KIND[i.kind]?.hint || "")}">${esc(i.kind)}</span></td>
-      <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y: "유가", K: "코스닥", N: "코넥스"}[i.corp_cls] || "비상장·기타"}</div></td>
+      <td><b>${esc(i.corp_name)}</b><div class="meta">${mktCell(i.corp_code, i.corp_cls)}</div></td>
       <td class="wrap">${esc(i.label || "")}${i.issued ? `<div class="meta">발행 ${esc(i.issued.replaceAll("-", "."))}</div>` : ""}${i.check ? ` <span class="tag tax" title="${esc(i.early_rcept ? "최근 1년 안에 만기 전 사채 취득(풋옵션 등) 공시가 있어 이미 상환됐을 수 있습니다" : "발행액 기준입니다. 풋옵션·전환으로 잔액이 줄었을 수 있습니다")}">${esc(i.check)}</span>${i.early_rcept ? ` ${DART_LINK({rcept_no: i.early_rcept}, "공시")}` : ""}` : ""}</td>
       <td class="num">${i.amount ? eok(i.amount) : "-"}</td>
       <td>${DART_LINK(i, "원문")}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">조건에 맞는 만기가 없습니다.</td></tr>`}</tbody>`;

@@ -1574,7 +1574,8 @@ def dates_status(events: list[dict]) -> dict:
 
 def filter_ipo(events: list[dict]) -> list[dict]:
     """증권신고서(지분증권) 중 신규 상장 공모만 남긴다.
-    - 같은 회사가 앞뒤 60일 안에 유상증자결정을 냈으면 상장사 공모 유상증자 → 제외 (유상증자로 이미 잡힘)
+    - 같은 회사가 앞뒤 120일 안에 유상증자결정을 냈으면 상장사 공모 유상증자 → 제외 (유상증자로 이미 잡힘)
+    - 신고 당시 이미 유가·코스닥 상장사면 신규상장이 아님 → '유상증자'(일반공모)로 바꿔 둠 (금액·납입일은 enrich_ipo 뒤에)
     - 스팩(기업인수목적회사)은 공모자금이 신탁에 묶여 운용 대상이 아니라 제외"""
     rights = {}
     for e in events:
@@ -1584,12 +1585,15 @@ def filter_ipo(events: list[dict]) -> list[dict]:
     for e in events:
         if e["category"] == "IPO 공모":
             d = parse_ymd(e["date"])
-            if any(abs((d - x).days) <= 60 for x in rights.get(e["corp_code"], [])):
+            if any(abs((d - x).days) <= 120 for x in rights.get(e["corp_code"], [])):
                 dropped["상장사 유상증자"] += 1
                 continue
             if re.search(r"스팩|기업인수목적|SPAC", e["corp_name"], re.I):
                 dropped["스팩"] += 1
                 continue
+            if e.get("corp_cls") in ("Y", "K"):
+                e = {**e, "listed_offer": True}
+                dropped["상장사 공모증자→유상증자"] += 1
         out.append(e)
     STATS["ipo_filter"] = {"kept": sum(1 for e in out if e["category"] == "IPO 공모"), **dropped}
     return out
@@ -1717,6 +1721,13 @@ def main() -> int:
     contacts = update_details(events) if CFG.get("details", {}).get("enabled") else {}
     enrich_bond_dates(events)
     enrich_ipo(events)
+    for e in events:   # 상장사 공모 유상증자: IPO 정보 조회 뒤 분류만 바꿈
+        if e.pop("listed_offer", None):
+            e["category"] = "유상증자"
+            det = e.setdefault("detail", {})
+            det.setdefault("texts", []).append(["증자방식", "일반공모(증권신고서)"])
+            if det.get("amount_label", "").startswith("공모"):
+                det["amount_label"] = det["amount_label"].replace("공모", "조달", 1)
     save_json(ROOT / "reports" / "dates_status.json", {"generated_at": now_kst().isoformat(timespec="minutes"),
                                                       "by_category": dates_status(events), "bond_diag": BOND_DIAG,
                                                       "ipo_diag": IPO_DIAG})
