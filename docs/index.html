@@ -422,7 +422,7 @@ tbody tr.click:hover{background:var(--surface-2)}
         <button data-v="" class="on">전체</button><button data-v="유입">유입</button><button data-v="유출">유출</button>
       </div>
       <select id="f-cat"><option value="">모든 유형</option></select>
-      <select id="f-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
+      <select id="f-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="N">코넥스</option><option value="E">비상장·상장 전</option></select>
       <input type="text" id="f-q" placeholder="법인명·보고서명">
       <label>정렬 <select id="f-sort"><option value="date">공시일</option><option value="amount">금액</option><option value="sched">일정(납입·지급일)</option><option value="score">점수</option><option value="name">법인명</option><option value="cat">유형</option></select></label>
       <button class="dirbtn" id="f-dir" title="오름차순/내림차순 전환">↓ 내림차순</button>
@@ -445,7 +445,7 @@ tbody tr.click:hover{background:var(--surface-2)}
         <button data-v="" class="on">전체</button><button data-v="지분 매각">지분 매각</button><button data-v="매도 계획">매도 계획</button><button data-v="경영권 양도">경영권 양도</button><button data-v="증여·상속">증여·상속</button><button data-v="주식담보">주식담보</button><button data-v="배당 수령">배당 수령</button>
       </div>
       <select id="ow-min"><option value="0">모든 금액</option><option value="100000000" selected>1억 이상</option><option value="1000000000">10억 이상</option><option value="10000000000">100억 이상</option></select>
-      <select id="ow-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
+      <select id="ow-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="N">코넥스</option><option value="E">비상장·상장 전</option></select>
       <input type="text" id="ow-q" placeholder="법인명·이름">
       <label>정렬 <select id="ow-sort"><option value="date">공시일</option><option value="cat">유형</option><option value="name">법인명</option><option value="person">대주주</option><option value="shares">주식수</option><option value="amount">금액</option><option value="when">자금 일자</option></select></label>
       <button class="dirbtn" id="ow-dir" title="오름차순/내림차순 전환">↓ 내림차순</button>
@@ -470,7 +470,7 @@ tbody tr.click:hover{background:var(--surface-2)}
         <button data-v="" class="on">전체</button><button data-v="IPO">IPO</button><button data-v="제3자배정 증자">제3자배정 증자</button>
       </div>
       <select id="lk-min"><option value="0">모든 금액</option><option value="100000000" selected>1억 이상</option><option value="1000000000">10억 이상</option><option value="10000000000">100억 이상</option></select>
-      <select id="lk-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="E">비상장·기타</option></select>
+      <select id="lk-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="N">코넥스</option><option value="E">비상장·상장 전</option></select>
       <select id="lk-uw" title="상장 당시 대표주관사 (IPO 증권신고서 인수인 정보)"><option value="">모든 주관사</option><option value="KIS">한국투자증권 주관</option><option value="OTHER">타사 주관</option></select>
       <input type="text" id="lk-q" placeholder="법인명·이름">
       <span class="count" id="lk-count"></span>
@@ -498,7 +498,7 @@ tbody tr.click:hover{background:var(--surface-2)}
         <button data-v="" class="on">전체</button><button data-v="회사채 만기">회사채</button><button data-v="메자닌 만기">메자닌</button><button data-v="주식담보 만기">주식담보</button><button data-v="대여금 회수">대여금 회수</button><button data-v="락업 해제">락업 해제</button>
       </div>
       <select id="cal-min"><option value="0">모든 금액</option><option value="1000000000" selected>10억 이상</option><option value="10000000000">100억 이상</option><option value="50000000000">500억 이상</option></select>
-      <select id="cal-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="E">비상장</option></select>
+      <select id="cal-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="N">코넥스</option><option value="E">비상장·상장 전</option></select>
       <input type="text" id="cal-q" placeholder="법인명">
       <span class="count" id="cal-count"></span>
     </div>
@@ -512,7 +512,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="sub">현금성자산 총량(현금 + 단기금융상품)·현금/자산·현금증감·유입공시 각 25점, 100점 만점. 순현금은 참고용(점수 미반영). 행을 누르면 상세.</p>
     <div class="segchips" id="segchips"></div>
     <div class="filters">
-      <select id="s-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
+      <select id="s-mkt" title="스크리너는 재무를 확보한 상장사(유가·코스닥) 대상"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
       <select id="s-seg"><option value="">모든 자금 성격</option></select>
       <label>최소 점수 <input type="range" id="s-min" min="0" max="90" step="10" value="0"> <b id="s-min-v">0</b></label>
       <label><input type="checkbox" id="s-fin"> 재무 확보 법인만</label>
@@ -1079,7 +1079,7 @@ function renderFlow() {
     inPeriod = D.events.filter(e => e.date >= from);
   }
   const rows = inPeriod.filter(e =>
-    (!f.type || e.type === f.type) && (!f.cat || e.category === f.cat) && (!f.mkt || e.corp_cls === f.mkt) &&
+    (!f.type || e.type === f.type) && (!f.cat || e.category === f.cat) && mktMatch(e.corp_code, e.corp_cls, f.mkt) &&
     (!q || (e.corp_name + e.report_nm).replace(/\s/g, "").includes(q)));
   const sv = EV_COLS[f.sort].v;
   rows.sort((a, b) => {  // 값 없는 행은 방향과 관계없이 항상 맨 뒤
@@ -1219,7 +1219,7 @@ function initOwner() {
 function renderOwner() {
   const o = st.ow, from = daysAgo(o.period);
   const rows = D.holders.items.filter(i =>
-    i.date >= from && (!o.cat || i.cat === o.cat) && (!o.mkt || i.corp_cls === o.mkt) &&
+    i.date >= from && (!o.cat || i.cat === o.cat) && mktMatch(i.corp_code, i.corp_cls, o.mkt) &&
     (o.min === 0 || (i.amount || 0) >= o.min) &&
     (!o.q || (i.corp_name + i.person).replace(/\s/g, "").includes(o.q)));
   const sv = OW_COLS[o.sort].v;
@@ -1273,10 +1273,11 @@ const uwMatch = (code, f) => { if (!f) return true; const u = uwOf(code); if (!u
   const kis = [...u.lead, ...(u.co || [])].some(x => KIS_RX.test(x)); return f === "KIS" ? kis : !kis; };
 
 /* ── 비상장·상장 전 표시 ── */
-let LISTED_SET = null;   // 지금 상장돼 있는 회사 (분석 대상 시장 + IPO 후 거래가 시작된 회사)
+let LISTED_SET = null; const LK_MKT = {};   // 지금 상장돼 있는 회사 (분석 대상 시장 + IPO 후 거래가 시작된 회사)
 const isListedNow = (code, cls) => {
   if (!LISTED_SET) { LISTED_SET = new Set(D.companies.filter(c => ["Y", "K", "N"].includes(c.market)).map(c => c.corp_code));
-    (D.lockup?.items || []).forEach(i => { if (i.base_kind === "상장일") LISTED_SET.add(i.corp_code); }); }
+    (D.lockup?.items || []).forEach(i => { if (i.base_kind === "상장일") LISTED_SET.add(i.corp_code);
+      if (["Y", "K", "N"].includes(i.corp_cls)) LK_MKT[i.corp_code] = i.corp_cls; }); }
   return ["Y", "K", "N"].includes(cls) || LISTED_SET.has(code);
 };
 const MKT_LBL = {Y: "유가", K: "코스닥", N: "코넥스"};
@@ -1285,6 +1286,11 @@ const mktCell = (code, cls, ipo) => isListedNow(code, cls)
   ? esc(MKT_LBL[cls] || MKT_LBL[CO_BY_CODE[code]?.market] || "상장")
   : ipo ? '<span class="tag unl-ipo" title="IPO 진행 중 — 아직 상장 전">상장 전</span>'
         : '<span class="tag unl" title="비상장 회사">비상장</span>';
+// 시장 구분값 (지금 기준): 상장 후 거래가 시작된 IPO 회사는 분석 대상 시장값, 없으면 상장사로만 알고 있는 경우 그대로
+const mktOf = (code, cls) => ["Y", "K", "N"].includes(cls) ? cls
+  : ["Y", "K", "N"].includes(CO_BY_CODE[code]?.market) ? CO_BY_CODE[code].market
+  : isListedNow(code, cls) ? (LK_MKT[code] || "K") : "E";   // IPO 후 상장했는데 시장값이 없으면 코스닥(신규상장 대부분)
+const mktMatch = (code, cls, f) => !f || mktOf(code, cls) === f;
 const unlTag = (code, cls, ipo) => isListedNow(code, cls) ? "" : " " + mktCell(code, cls, ipo);
 
 /* ── 대주주 락업 해제 ── */
@@ -1325,7 +1331,7 @@ function initLock() {
 function renderLock() {
   const o = st.lk, [a, b] = lkRange(o.range);
   const rows = D.lockup.items.filter(i => i.date >= a && i.date <= b && (!o.src || i.src === o.src) &&
-    (o.min === 0 || (i.amount || 0) >= o.min) && (!o.mkt || (o.mkt === "E" ? !["Y", "K"].includes(i.corp_cls) : i.corp_cls === o.mkt)) &&
+    (o.min === 0 || (i.amount || 0) >= o.min) && mktMatch(i.corp_code, i.corp_cls, o.mkt) &&
     uwMatch(i.corp_code, o.uw) && (!o.q || (i.corp_name + i.person + uwText(i.corp_code)).replace(/\s/g, "").includes(o.q)));
   const sv = LK_COLS[o.sort].v;
   rows.sort((x, y) => { const va = sv(x), vb = sv(y);
@@ -1394,7 +1400,7 @@ function initCal() {
 function renderCal() {
   const o = st.cal, [a, b] = calRange(o.range);
   const rows = D.calendar.items.filter(i => i.date >= a && i.date <= b && (!o.kind || i.kind === o.kind) &&
-    (o.min === 0 || (i.amount || 0) >= o.min) && (!o.mkt || (o.mkt === "E" ? !["Y", "K"].includes(i.corp_cls) : i.corp_cls === o.mkt)) &&
+    (o.min === 0 || (i.amount || 0) >= o.min) && mktMatch(i.corp_code, i.corp_cls, o.mkt) &&
     (!o.q || i.corp_name.replace(/\s/g, "").includes(o.q)));
   const sv = CAL_COLS[o.sort].v;
   rows.sort((x, y) => { const va = sv(x), vb = sv(y);
