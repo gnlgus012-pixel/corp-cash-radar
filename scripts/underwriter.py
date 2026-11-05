@@ -86,7 +86,8 @@ def main() -> int:
             if head.get("pv") == L.PARSE_VER and not hp.get("ipo"):
                 continue                       # 상장 공모가 아닌 신고서 (유상증자 등)
             cc = head["corp_code"]
-            if corps.get(cc, {}).get("v") == VER and corps[cc].get("rcept_no") == cl[0]:
+            if (corps.get(cc, {}).get("v") == VER and corps[cc].get("rcept_no") == cl[0]
+                    and (corps[cc].get("lead") or corps[cc].get("empty"))):
                 continue
             if stats["calls"] >= 1500 or (PROBE and stats["calls"] >= 4):
                 break
@@ -103,7 +104,7 @@ def main() -> int:
             if not src:
                 stats["empty"] += 1
                 corps[cc] = {"v": VER, "rcept_no": cl[0], "lead": [], "co": [], "under": [], "date": head["date"],
-                             "corp_name": head["corp_name"]}
+                             "corp_name": head["corp_name"], "empty": True}
                 continue
             got = pick(groups[src])
             corps[cc] = {"v": VER, "rcept_no": cl[0], "src": src, "date": head["date"],

@@ -158,6 +158,8 @@ tbody tr.click:hover{background:var(--surface-2)}
 .filters select,.filters input[type=text]{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;outline:none}
 .filters input[type=text]{min-width:160px}
 .filters label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2)}
+.tag.k-uw-kis{background:#fff1e6;color:#b45309}.uw-kis{color:#b45309;font-weight:600}
+:root[data-theme="dark"] .tag.k-uw-kis{background:#3b2a16;color:#f6ad55}
 .subnav{display:flex;gap:6px;margin:0 0 12px}
 .subnav button{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600}
 .subnav button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
@@ -466,6 +468,7 @@ tbody tr.click:hover{background:var(--surface-2)}
       </div>
       <select id="lk-min"><option value="0">모든 금액</option><option value="100000000" selected>1억 이상</option><option value="1000000000">10억 이상</option><option value="10000000000">100억 이상</option></select>
       <select id="lk-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="E">비상장·기타</option></select>
+      <select id="lk-uw" title="상장 당시 대표주관사 (IPO 증권신고서 인수인 정보)"><option value="">모든 주관사</option><option value="KIS">한국투자증권 주관</option><option value="OTHER">타사 주관</option></select>
       <input type="text" id="lk-q" placeholder="법인명·이름">
       <span class="count" id="lk-count"></span>
     </div>
@@ -615,7 +618,7 @@ const st = {
   topic: 0,
   ow: {period: 30, cat: "", min: 1e8, mkt: "", q: "", sort: "date", dir: -1},
   cal: {range: "n90", kind: "", min: 1e9, mkt: "", q: "", sort: "date", dir: 1},
-  lk: {range: "n90", src: "", min: 1e8, mkt: "", q: "", sort: "date", dir: 1},
+  lk: {range: "n90", src: "", min: 1e8, mkt: "", uw: "", q: "", sort: "date", dir: 1},
 };
 
 /* ── 테마 ── */
@@ -1250,6 +1253,17 @@ function renderOwner() {
   bindCo($("#owTable"));
 }
 
+/* ── 상장 주관사 (IPO 증권신고서 인수인 정보) ── */
+const KIS_RX = /^한국투자증권/;
+const uwOf = code => (D.underwriter || {})[code];
+const uwText = code => { const u = uwOf(code); if (!u?.lead?.length) return "";
+  return u.lead.join("·") + (u.co?.length ? ` 외 공동 ${u.co.length}` : ""); };
+const uwTag = code => { const t = uwText(code); if (!t) return "";
+  const u = uwOf(code), kis = u.lead.some(f => KIS_RX.test(f)) || (u.co || []).some(f => KIS_RX.test(f));
+  return `<span class="tag ${kis ? "k-uw-kis" : "gray"}" title="상장 대표주관사${u.co?.length ? " · 공동: " + u.co.join(", ") : ""}${u.under?.length ? " · 인수: " + u.under.join(", ") : ""}">주관 ${esc(t)}</span>`; };
+const uwMatch = (code, f) => { if (!f) return true; const u = uwOf(code); if (!u?.lead?.length) return false;
+  const kis = [...u.lead, ...(u.co || [])].some(x => KIS_RX.test(x)); return f === "KIS" ? kis : !kis; };
+
 /* ── 대주주 락업 해제 ── */
 const LK_COLS = {
   date: {l: "해제 예정일", v: i => i.date, def: 1}, name: {l: "법인", v: i => i.corp_name, def: 1},
@@ -1268,6 +1282,7 @@ function initLock() {
   seg("lk-range", "range"); seg("lk-src", "src");
   $("#lk-min").onchange = e => { o.min = +e.target.value; renderLock(); };
   $("#lk-mkt").onchange = e => { o.mkt = e.target.value; renderLock(); };
+  $("#lk-uw").onchange = e => { o.uw = e.target.value; renderLock(); };
   $("#lk-q").oninput = e => { o.q = e.target.value.replace(/\s/g, ""); renderLock(); };
   const sum = arr => arr.reduce((a, i) => a + (i.amount || 0), 0);
   const win = r => { const [a, b] = calRange(r); return L.items.filter(i => i.date >= a && i.date <= b); };
@@ -1288,7 +1303,7 @@ function renderLock() {
   const o = st.lk, [a, b] = lkRange(o.range);
   const rows = D.lockup.items.filter(i => i.date >= a && i.date <= b && (!o.src || i.src === o.src) &&
     (o.min === 0 || (i.amount || 0) >= o.min) && (!o.mkt || (o.mkt === "E" ? !["Y", "K"].includes(i.corp_cls) : i.corp_cls === o.mkt)) &&
-    (!o.q || (i.corp_name + i.person).replace(/\s/g, "").includes(o.q)));
+    uwMatch(i.corp_code, o.uw) && (!o.q || (i.corp_name + i.person + uwText(i.corp_code)).replace(/\s/g, "").includes(o.q)));
   const sv = LK_COLS[o.sort].v;
   rows.sort((x, y) => { const va = sv(x), vb = sv(y);
     if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
@@ -1299,7 +1314,7 @@ function renderLock() {
   $("#lkTable").innerHTML = `<thead><tr>${th("date")}${th("name")}${th("person")}${th("shares", "num")}${th("amount", "num")}${th("period")}${th("src")}<th>원문</th></tr></thead><tbody>${
     rows.slice(0, LIMIT).map(i => `<tr class="${CO_BY_CODE[i.corp_code] ? "click" : ""}" data-co="${esc(i.corp_code)}">
       <td><b>${esc(i.date.replaceAll("-", "."))}</b><div class="meta">${dday(i.date)}</div></td>
-      <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y: "유가", K: "코스닥", N: "코넥스"}[i.corp_cls] || "비상장·기타"}</div></td>
+      <td><b>${esc(i.corp_name)}</b><div class="meta">${{Y: "유가", K: "코스닥", N: "코넥스"}[i.corp_cls] || "비상장·기타"}${i.src === "IPO" && uwText(i.corp_code) ? ` · <span class="${uwOf(i.corp_code).lead.some(f => KIS_RX.test(f)) ? "uw-kis" : ""}">주관 ${esc(uwText(i.corp_code))}</span>` : ""}</div></td>
       <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "-")}</div></td>
       <td class="num">${i.shares ? i.shares.toLocaleString() : "-"}</td>
       <td class="num">${i.amount ? (i.amount >= 1e8 ? eok(i.amount) : (i.amount / 1e4).toFixed(0) + "만") : "-"}<div class="meta">${esc(i.px_kind || "")}${i.px ? " " + i.px.toLocaleString() + "원" : ""}</div></td>
@@ -1678,7 +1693,7 @@ function openCompany(code) {
   $("#drawer").innerHTML = `
     <div class="dh"><button class="x" aria-label="닫기">×</button>
       <h2>${esc(c.name)}</h2>
-      <div class="tags"><span class="tag gray">${esc(c.market_label)}</span>${c.stock_code ? `<span class="tag gray">${esc(c.stock_code)}</span>` : ""}${segTag(c.segment)}${c.watch ? '<span class="tag gray">관심법인</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}</div>
+      <div class="tags"><span class="tag gray">${esc(c.market_label)}</span>${c.stock_code ? `<span class="tag gray">${esc(c.stock_code)}</span>` : ""}${segTag(c.segment)}${uwTag(code)}${c.watch ? '<span class="tag gray">관심법인</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}</div>
       ${c.memo ? `<div class="sub" style="margin:6px 0 0">메모: ${esc(c.memo)}</div>` : ""}
     </div>
     <div class="db">
@@ -1717,7 +1732,7 @@ function openCompany(code) {
 function lockCard(code) {
   const L = (D.lockup?.items || []).filter(i => i.corp_code === code).sort((a, b) => a.date.localeCompare(b.date));
   if (!L.length) return "";
-  return `<div class="card"><h3>대주주 락업 해제 <span class="sub" style="font-weight:400">${L.length}명</span></h3><table><tbody>${
+  return `<div class="card"><h3>대주주 락업 해제 <span class="sub" style="font-weight:400">${L.length}명${uwText(code) ? " · 상장 주관 " + esc(uwText(code)) : ""}</span></h3><table><tbody>${
     L.slice(0, 30).map(i => `<tr><td>${esc(i.date.replaceAll("-", "."))}<div class="meta">${dday(i.date)}</div></td>
       <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "")}</div></td>
       <td class="num">${i.shares ? i.shares.toLocaleString() + "주" : "-"}</td>
