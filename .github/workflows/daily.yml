@@ -73,6 +73,15 @@ jobs:
           LOCKUP_MAX_DOCS: "80"
         run: python scripts/lockup.py
 
+      # 상장 주관사 — IPO 증권신고서 인수인 정보 (새 신고서만 조회)
+      - name: 상장 주관사
+        if: always()
+        continue-on-error: true
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          RADAR_TIME_BUDGET_MIN: "5"
+        run: python scripts/underwriter.py
+
       # 만기·상환 캘린더 (회사채·메자닌·주식담보·대여금) — 처음 며칠은 과거 발행분을 이어서 채움
       - name: 만기 캘린더
         if: always()

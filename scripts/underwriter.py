@@ -87,7 +87,8 @@ def main() -> int:
                 continue                       # 상장 공모가 아닌 신고서 (유상증자 등)
             cc = head["corp_code"]
             if (corps.get(cc, {}).get("v") == VER and corps[cc].get("rcept_no") == cl[0]
-                    and (corps[cc].get("lead") or corps[cc].get("empty"))):
+                    and (corps[cc].get("lead") or (corps[cc].get("empty")
+                                                   and head["date"] < C.ymd(C.now_kst().date() - timedelta(days=90))))):
                 continue
             if stats["calls"] >= 1500 or (PROBE and stats["calls"] >= 4):
                 break

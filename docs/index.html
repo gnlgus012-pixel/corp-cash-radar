@@ -1255,7 +1255,12 @@ function renderOwner() {
 
 /* ── 상장 주관사 (IPO 증권신고서 인수인 정보) ── */
 const KIS_RX = /^한국투자증권/;
-const uwOf = code => (D.underwriter || {})[code];
+const FIRM_SHORT = {"케이비증권": "KB증권", "아이비케이투자증권": "IBK투자증권", "DB금융투자": "DB증권", "엔에이치투자증권": "NH투자증권",
+  "유비에스증권리미티드(영업소)": "UBS", "제이피모간증권회사서울지점": "JP모간", "메릴린치증권서울지점": "메릴린치",
+  "모간스탠리인터내셔날증권회사서울지점": "모건스탠리", "크레디트스위스증권서울지점": "크레디트스위스", "씨티그룹글로벌마켓증권": "씨티"};
+const firmShort = f => FIRM_SHORT[f] || f.replace(/(증권회사)?서울지점$|\(영업소\)$/, "");
+const uwOf = code => { const u = (D.underwriter || {})[code]; if (!u) return u;
+  const m = a => (a || []).map(firmShort); return {...u, lead: m(u.lead), co: m(u.co), under: m(u.under)}; };
 const uwText = code => { const u = uwOf(code); if (!u?.lead?.length) return "";
   return u.lead.join("·") + (u.co?.length ? ` 외 공동 ${u.co.length}` : ""); };
 const uwTag = code => { const t = uwText(code); if (!t) return "";
