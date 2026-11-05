@@ -40,11 +40,14 @@ def pick(rows: list[dict]) -> dict:
     """인수인 표 행 → 역할별 증권사 (키 이름에 기대지 않고 값으로 판단)"""
     out = {"lead": [], "co": [], "under": []}
     for r in rows:
-        vals = [str(v).strip() for v in r.values() if isinstance(v, (str, int, float)) and str(v).strip()]
-        role = next((v for v in vals if ROLE_RX.search(re.sub(r"\s", "", v))), "")
-        firm = next((v for v in vals if v != role and FIRM_RX.search(v) and not re.fullmatch(r"[\d,.\-]+", v)), "")
+        if "actnmn" in r:   # estkRs 표준 키: actsen(대표/공동/인수) · actnmn(인수인명)
+            role, firm = str(r.get("actsen") or ""), str(r.get("actnmn") or "")
+        else:
+            vals = [str(v).strip() for v in r.values() if isinstance(v, (str, int, float)) and str(v).strip()]
+            role = next((v for v in vals if ROLE_RX.search(re.sub(r"\s", "", v))), "")
+            firm = next((v for v in vals if v != role and FIRM_RX.search(v) and not re.fullmatch(r"[\d,.\-]+", v)), "")
         firm = norm_firm(firm)
-        if not firm:
+        if not firm or firm == "-":
             continue
         r2 = re.sub(r"\s", "", role)
         key = "lead" if "대표" in r2 else "co" if "공동" in r2 else "under"
@@ -96,7 +99,7 @@ def main() -> int:
                                           "rows": (g.get("list") or [])[:4]}
                                          for g in j.get("group") or [] if "인수" in (g.get("title") or "")]})
             groups = underwriter_groups(j)
-            src = next((r for r in cl if groups.get(r)), None) or next(iter(groups), None)
+            src = next((r for r in cl if groups.get(r)), None) or max(groups, default=None)
             if not src:
                 stats["empty"] += 1
                 corps[cc] = {"v": VER, "rcept_no": cl[0], "lead": [], "co": [], "under": [], "date": head["date"],
