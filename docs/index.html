@@ -1277,13 +1277,14 @@ let LISTED_SET = null; const LK_MKT = {};   // 지금 상장돼 있는 회사 (�
 const isListedNow = (code, cls) => {
   if (!LISTED_SET) { LISTED_SET = new Set(D.companies.filter(c => ["Y", "K", "N"].includes(c.market)).map(c => c.corp_code));
     (D.lockup?.items || []).forEach(i => { if (i.base_kind === "상장일") LISTED_SET.add(i.corp_code);
-      if (["Y", "K", "N"].includes(i.corp_cls)) LK_MKT[i.corp_code] = i.corp_cls; }); }
+      if (["Y", "K", "N"].includes(i.corp_cls)) LK_MKT[i.corp_code] = i.corp_cls; });
+    Object.entries(D.lockup?.listed || {}).forEach(([cc, v]) => { LISTED_SET.add(cc); if (["Y", "K", "N"].includes(v.m)) LK_MKT[cc] = v.m; }); }
   return ["Y", "K", "N"].includes(cls) || LISTED_SET.has(code);
 };
 const MKT_LBL = {Y: "유가", K: "코스닥", N: "코넥스"};
 // 시장 표시: 상장사면 시장명, 아니면 눈에 띄는 태그 (IPO 진행 중이면 '상장 전')
 const mktCell = (code, cls, ipo) => isListedNow(code, cls)
-  ? esc(MKT_LBL[cls] || MKT_LBL[CO_BY_CODE[code]?.market] || "상장")
+  ? esc(MKT_LBL[mktOf(code, cls)] || "상장")
   : ipo ? '<span class="tag unl-ipo" title="IPO 진행 중 — 아직 상장 전">상장 전</span>'
         : '<span class="tag unl" title="비상장 회사">비상장</span>';
 // 시장 구분값 (지금 기준): 상장 후 거래가 시작된 IPO 회사는 분석 대상 시장값, 없으면 상장사로만 알고 있는 경우 그대로

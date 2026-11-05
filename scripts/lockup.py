@@ -455,6 +455,35 @@ def build(store: dict, prices: dict, today: date, corp_map: dict) -> list[dict]:
     return items
 
 
+def listed_ipos(store: dict, prices: dict, today: date, corp_map: dict) -> dict:
+    """IPO 신고서를 낸 회사 중 실제로 상장해 거래가 시작된 곳 → {corp_code: {d: 상장일, m: 시장}}
+    (대주주 개인이 없어 락업 항목이 없는 회사도 '상장 전' 표시가 남지 않도록)"""
+    docs, mk = store["docs"], store.setdefault("mkt", {})
+    out = {}
+    try:
+        for cl in ipo_clusters(docs):
+            d = docs[cl[0]]
+            p = d.get("parsed") or {}
+            if not p.get("ipo") or not p.get("pay_date") or re.search(r"스팩|기업인수목적|SPAC", d["corp_name"], re.I):
+                continue
+            cc = d["corp_code"]
+            code = d.get("stock_code") or corp_map.get(cc, {}).get("stock_code", "")
+            if not code:
+                continue
+            C.check_time()
+            lst = first_trade(prices, code, p["pay_date"], today)
+            if not lst or (_d(lst) - _d(p["pay_date"])).days > 40:
+                continue
+            if mk.get(cc) not in ("Y", "K", "N"):
+                j = C.dart_get("company.json", corp_code=cc)   # 지금 시장구분 (상장 후 한 번만)
+                mk[cc] = j.get("corp_cls") if j.get("status") == "000" else None
+            out[cc] = {"d": lst, "m": mk.get(cc) or ""}
+    except (C.OutOfTime, C.DartError) as ex:
+        C.warn(f"상장 여부 확인 중단 ({ex.__class__.__name__})")
+    STATS["listed_ipo"] = len(out)
+    return out
+
+
 def main() -> int:
     if not C.DART_KEY:
         return 1
@@ -485,6 +514,8 @@ def main() -> int:
     except C.OutOfTime:
         items = []
         C.warn("시간 부족으로 보호예수 항목 생략")
+    listed = listed_ipos(store, prices, today, corp_map)
+    C.save_json(STORE_PATH, store)
     C.save_json(H.PRICE_PATH, prices)
     docs = store["docs"]
     pend = sum(1 for d in docs.values() if d["kind"] != "ipo" and not _done(d)) + len(ipo_todo(docs))
@@ -523,7 +554,7 @@ def main() -> int:
                                if d["kind"] == "rights" and (d.get("parsed") or {}).get("third")][:40]})
     if C.OUT_PATH.exists():
         data = json.loads(C.OUT_PATH.read_text(encoding="utf-8"))
-        data["lockup"] = {"items": items, "pending": pend}
+        data["lockup"] = {"items": items, "pending": pend, "listed": listed}
         C.OUT_PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     C.log(f"보호예수 해제 {len(items)}건 (원문 대기 {pend})")
     return 0
