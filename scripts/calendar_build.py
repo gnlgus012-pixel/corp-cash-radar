@@ -111,7 +111,7 @@ def mezz_terms(store: dict) -> None:
 
 
 def build(store: dict, data: dict, today: date) -> list[dict]:
-    lo, hi = (today - timedelta(days=30)).isoformat(), (today + timedelta(days=366)).isoformat()
+    lo, hi = (today - timedelta(days=365)).isoformat(), (today + timedelta(days=366)).isoformat()   # 지난 1년 만기분도 보관
     items = []
     # 회사채: (법인, 회차) 별 최신 신고서 기준
     seen = {}

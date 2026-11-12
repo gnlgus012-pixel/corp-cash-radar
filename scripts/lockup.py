@@ -395,7 +395,7 @@ def first_trade(prices: dict, code: str, after: str, today: date):
 
 def build(store: dict, prices: dict, today: date, corp_map: dict) -> list[dict]:
     items = []
-    lo = today - timedelta(days=30)
+    lo = today - timedelta(days=365)   # 지난 1년 해제분까지 (최근 해제 대주주도 섭외 대상)
     docs = store["docs"]
     work = [(rn, d, d.get("parsed")) for rn, d in docs.items() if d["kind"] != "ipo"]
     for head, src_rn in ipo_pick(docs):
@@ -411,7 +411,7 @@ def build(store: dict, prices: dict, today: date, corp_map: dict) -> list[dict]:
         if not p or not p.get("people"):
             continue
         C.check_time()
-        code = d.get("stock_code") or corp_map.get(d["corp_code"], {}).get("stock_code", "")
+        code = stock_code_of(d, corp_map, (p or {}).get("pay_date"))
         if d["kind"] == "ipo":
             if not p.get("ipo") or not p.get("pay_date"):
                 continue
@@ -455,6 +455,38 @@ def build(store: dict, prices: dict, today: date, corp_map: dict) -> list[dict]:
     return items
 
 
+_SC = {"store": None, "today": None, "calls": 0}
+
+
+def stock_code_of(d: dict, corp_map: dict, pay_date: str | None = None) -> str:
+    """종목코드: 신고서 목록 → 고유번호 파일(7일 캐시) → 막 상장한 회사는 DART 기업개황으로 매일 확인
+    (고유번호 파일이 늦게 갱신돼 상장 직후 며칠 '상장 전'으로 남던 문제)"""
+    cc = d["corp_code"]
+    code = d.get("stock_code") or corp_map.get(cc, {}).get("stock_code", "")
+    if code:
+        return code
+    store, today = _SC["store"], _SC["today"]
+    if store is None or not pay_date:
+        return ""
+    try:
+        days = (today - _d(pay_date)).days
+    except ValueError:
+        return ""
+    if not (-1 <= days <= 120):
+        return ""
+    sc = store.setdefault("sc", {})
+    hit = sc.get(cc)
+    if hit and (hit.get("c") or hit.get("t") == str(today)):
+        return hit.get("c", "")
+    if _SC["calls"] >= 200:
+        return ""
+    j = C.dart_get("company.json", corp_code=cc)
+    _SC["calls"] += 1
+    code = (j.get("stock_code") or "").strip() if j.get("status") == "000" else ""
+    sc[cc] = {"c": code, "t": str(today)}
+    return code
+
+
 def listed_ipos(store: dict, prices: dict, today: date, corp_map: dict) -> dict:
     """IPO 신고서를 낸 회사 중 실제로 상장해 거래가 시작된 곳 → {corp_code: {d: 상장일, m: 시장}}
     (대주주 개인이 없어 락업 항목이 없는 회사도 '상장 전' 표시가 남지 않도록)"""
@@ -467,7 +499,7 @@ def listed_ipos(store: dict, prices: dict, today: date, corp_map: dict) -> dict:
             if not p.get("ipo") or not p.get("pay_date") or re.search(r"스팩|기업인수목적|SPAC", d["corp_name"], re.I):
                 continue
             cc = d["corp_code"]
-            code = d.get("stock_code") or corp_map.get(cc, {}).get("stock_code", "")
+            code = stock_code_of(d, corp_map, p["pay_date"])
             if not code:
                 continue
             C.check_time()
@@ -509,6 +541,7 @@ def main() -> int:
     prices = H.load_prices()
     H.corp_names()
     corp_map = C.load_json(C.CACHE_DIR / "corpcode.json", {}).get("map", {})
+    _SC.update(store=store, today=today)
     try:
         items = build(store, prices, today, corp_map)
     except C.OutOfTime:

@@ -464,7 +464,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <div class="grid g4" id="lk-kpis" style="margin-bottom:14px"></div>
     <div class="filters">
       <div class="seg-btns" id="lk-range">
-        <button data-v="past30">지난 30일</button><button data-v="n30">향후 30일</button><button data-v="n90" class="on">향후 90일</button><button data-v="n180">6개월</button><button data-v="n365">1년</button><button data-v="all">전체</button>
+        <button data-v="past365">지난 1년</button><button data-v="past30">지난 30일</button><button data-v="n30">향후 30일</button><button data-v="n90" class="on">향후 90일</button><button data-v="n180">6개월</button><button data-v="n365">1년</button><button data-v="all">전체</button>
       </div>
       <div class="seg-btns" id="lk-src">
         <button data-v="" class="on">전체</button><button data-v="IPO">IPO</button><button data-v="제3자배정 증자">제3자배정 증자</button>
@@ -492,7 +492,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     </div>
     <div class="filters">
       <div class="seg-btns" id="cal-range">
-        <button data-v="past30">지난 30일</button><button data-v="n30">향후 30일</button><button data-v="n90" class="on">향후 90일</button><button data-v="n180">6개월</button><button data-v="n365">1년</button>
+        <button data-v="past365">지난 1년</button><button data-v="past30">지난 30일</button><button data-v="n30">향후 30일</button><button data-v="n90" class="on">향후 90일</button><button data-v="n180">6개월</button><button data-v="n365">1년</button>
       </div>
       <div class="seg-btns" id="cal-kind">
         <button data-v="" class="on">전체</button><button data-v="회사채 만기">회사채</button><button data-v="메자닌 만기">메자닌</button><button data-v="주식담보 만기">주식담보</button><button data-v="대여금 회수">대여금 회수</button><button data-v="락업 해제">락업 해제</button>
@@ -1370,7 +1370,7 @@ const CAL_COLS = {
 const dday = d => { const t = new Date(todayIso() + "T00:00:00"), x = new Date(d + "T00:00:00"); const n = Math.round((x - t) / 864e5); return n === 0 ? "D-day" : n > 0 ? `D-${n}` : `${-n}일 지남`; };
 function calRange(r) {
   const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`; };
-  return {past30: [d(-30), d(-1)], n30: [d(0), d(30)], n90: [d(0), d(90)], n180: [d(0), d(180)], n365: [d(0), d(366)]}[r];
+  return {past365: [d(-365), d(-1)], past30: [d(-30), d(-1)], n30: [d(0), d(30)], n90: [d(0), d(90)], n180: [d(0), d(180)], n365: [d(0), d(366)]}[r];
 }
 function initCal() {
   const C = D.calendar;
