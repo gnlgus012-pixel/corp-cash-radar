@@ -342,6 +342,8 @@ def ipo_pick(docs: dict) -> list[tuple[str, str]]:
     out = []
     for cl in ipo_clusters(docs):
         src = next((rn for rn in cl if docs[rn].get("pv") == _ver(docs[rn]) and (docs[rn].get("parsed") or {}).get("people")), None)
+        if not src and any(not _done(docs[rn]) for rn in cl):   # 다시 읽는 중이면 이전 해석본으로 (화면에서 빠지지 않게)
+            src = next((rn for rn in cl if (docs[rn].get("parsed") or {}).get("people")), None)
         out.append((cl[0], src))
     return out
 
