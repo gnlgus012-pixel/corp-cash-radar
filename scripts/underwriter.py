@@ -83,7 +83,7 @@ def main() -> int:
         for cl in L.ipo_clusters(docs):
             head = docs[cl[0]]
             hp = head.get("parsed") or {}
-            if head.get("pv") == L.PARSE_VER and not hp.get("ipo"):
+            if head.get("pv") == L._ver(head) and not hp.get("ipo"):
                 continue                       # 상장 공모가 아닌 신고서 (유상증자 등)
             cc = head["corp_code"]
             if (corps.get(cc, {}).get("v") == VER and corps[cc].get("rcept_no") == cl[0]

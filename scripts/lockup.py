@@ -27,6 +27,7 @@ import holders as H  # noqa: E402
 STORE_PATH = C.CACHE_DIR / "lockup.json"
 CHECK_OUT = C.ROOT / "lockup_check.json"      # 검증용 (개인 이름 포함 → 저장소에 올리지 않고 Actions 산출물로만)
 PARSE_VER = "l3"   # IPO 해석 버전. 증자는 RIGHTS_VER
+FIX_VER = "l4"     # l4: 정정 신고서는 납입기일 후보 중 가장 많이 나온 날짜(동률이면 늦은 날) — 정정 전 날짜를 잡던 문제
 RIGHTS_VER = "l1"
 # l3: 「2,687,000주」 숫자, 머리 「매도제한」·「구분」, 병합된 기간 칸 / l2: 기간 칸 각주 「30개월(주1)」 인식, 발행조건확정본에 표가 없으면 이전 신고서 읽기
 SCAN_VER = "s2"    # s2: IPO는 정정 전 원본까지 목록에 (last_reprt_at=N)
@@ -96,16 +97,21 @@ def parse_ipo(rows: list[list[str]]) -> dict:
         out["ipo"] = "신규상장" in flat[hi + 1]
     else:
         out["ipo"] = any("상장예비심사" in f for f in flat[:400]) and any("신규상장" in f for f in flat[:300])
-    # 납입기일: '청약기일 | 납입기일 | …' 다음 행 같은 칸
-    for i, r in enumerate(rows[:400]):
+    # 납입기일: '청약기일 | 납입기일 | …' 다음 행 같은 칸 + '납입기일 | 날짜' 행 — 문서 전체에서 후보를 모아
+    # 가장 많이 나온 날짜 (정정 신고서 앞쪽 '정정 전/후' 표의 옛 날짜에 끌려가지 않게; 동률이면 늦은 날)
+    cand = []
+    for i, r in enumerate(rows[:4000]):
         cells = [nz(c) for c in r]
-        if "납입기일" in cells and i + 1 < len(rows):
+        if "납입기일" in cells:
             j = cells.index("납입기일")
-            nxt = rows[i + 1]
-            if j < len(nxt):
-                out["pay_date"] = C.parse_date(nxt[j])
-            if out["pay_date"]:
-                break
+            if i + 1 < len(rows) and j < len(rows[i + 1]) and C.parse_date(rows[i + 1][j]):
+                cand.append(C.parse_date(rows[i + 1][j]))
+            ds = [C.parse_date(c) for c in r[j + 1:] if C.parse_date(c)]
+            if ds:
+                cand.append(ds[-1])   # '납입기일 | 정정 전 | 정정 후' → 뒤쪽
+    if cand:
+        cnt = Counter(cand)
+        out["pay_date"] = max(cnt, key=lambda x: (cnt[x], x))
     for i, r in enumerate(rows[:200]):
         cells = [nz(c) for c in r]
         if "모집(매출)가액" in cells and i + 1 < len(rows):
@@ -311,7 +317,9 @@ def _done(d: dict) -> bool:
 
 
 def _ver(d: dict) -> str:
-    return PARSE_VER if d["kind"] == "ipo" else RIGHTS_VER
+    if d["kind"] != "ipo":
+        return RIGHTS_VER
+    return FIX_VER if "정정" in (d.get("report_nm") or "") else PARSE_VER
 
 
 def ipo_todo(docs: dict) -> list[str]:
@@ -333,7 +341,7 @@ def ipo_pick(docs: dict) -> list[tuple[str, str]]:
     """(최신본, 사람이 잡힌 신고서) — 납입일·가격은 최신본, 사람은 표가 있는 신고서"""
     out = []
     for cl in ipo_clusters(docs):
-        src = next((rn for rn in cl if docs[rn].get("pv") == PARSE_VER and (docs[rn].get("parsed") or {}).get("people")), None)
+        src = next((rn for rn in cl if docs[rn].get("pv") == _ver(docs[rn]) and (docs[rn].get("parsed") or {}).get("people")), None)
         out.append((cl[0], src))
     return out
 
@@ -402,7 +410,7 @@ def build(store: dict, prices: dict, today: date, corp_map: dict) -> list[dict]:
         if not src_rn:
             continue
         hp, sp = docs[head].get("parsed") or {}, docs[src_rn]["parsed"]
-        if docs[head].get("pv") == PARSE_VER and not hp.get("ipo"):
+        if docs[head].get("pv") == _ver(docs[head]) and not hp.get("ipo"):
             continue
         meta = {"ipo": True, "pay_date": hp.get("pay_date") or sp.get("pay_date"),
                 "price": hp.get("price") or sp.get("price"), "people": sp["people"]}
@@ -555,7 +563,7 @@ def main() -> int:
     picks = ipo_pick(docs)
     status = {"generated_at": C.now_kst().isoformat(timespec="minutes"), "items": len(items),
               "by_src": Counter(i["src"] for i in items), "docs": Counter(d["kind"] for d in docs.values()),
-              "ipo_docs_read": sum(1 for d in docs.values() if d["kind"] == "ipo" and d.get("pv") == PARSE_VER),
+              "ipo_docs_read": sum(1 for d in docs.values() if d["kind"] == "ipo" and d.get("pv") == _ver(d)),
               "ipo_clusters": len(picks),
               "ipo_flag": sum(1 for h, _ in picks if (docs[h].get("parsed") or {}).get("ipo")),
               "ipo_with_people": sum(1 for h, s in picks if s and (docs[h].get("parsed") or {}).get("ipo")),
