@@ -23,8 +23,9 @@ jobs:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           RADAR_TIME_BUDGET_MIN: "20"
         run: python scripts/pledge_probe.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pledge_probe
-          path: pledge_probe.json
-          retention-days: 2
+      - name: 결과 (암호화해서 출력)
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: |
+          gzip -9 -c pledge_probe.json | openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:SITE_PASSWORD | base64 -w 0 > p.b64
+          echo "PROBE_BEGIN"; cat p.b64; echo; echo "PROBE_END"
