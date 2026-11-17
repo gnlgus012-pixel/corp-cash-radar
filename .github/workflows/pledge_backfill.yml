@@ -1,0 +1,69 @@
+name: 주식담보 과거분 채우기 (수동)
+
+# 대주주 주식담보(5% 보고서 계약표·정기보고서 주주 항목) 과거분을 한 번에 채울 때.
+# 화면 데이터를 복호화 → 주식담보 항목만 다시 붙임 → 다시 암호화. 일일 갱신과 겹치지 않게 같은 줄에 선다.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar-update
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main   # 트리거 커밋이 아니라 최신 main (그 사이 올라온 데이터 커밋과 충돌 방지)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: 캐시 복원
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+          restore-keys: radar-cache-
+      - run: pip install -r requirements.txt && mkdir -p cache
+      - name: 화면 데이터 복호화
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: python scripts/seal.py open docs/data/data.enc docs/data/data.json
+      - name: 주식담보
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          RADAR_TIME_BUDGET_MIN: "70"
+          PLEDGE_BACKFILL_WEEKS: "120"
+          PLEDGE_MAX_DOCS: "20000"
+          PLEDGE_BUILD_RESERVE_SEC: "600"
+        run: python scripts/pledge.py
+      - name: 만기 캘린더
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          RADAR_TIME_BUDGET_MIN: "8"
+          CAL_MAX_API: "300"
+        run: python scripts/calendar_build.py
+      - name: 암호화
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          SITE_USERS: ${{ secrets.SITE_USERS }}
+          VISIT_LOG_URL: ${{ secrets.VISIT_LOG_URL }}
+        run: python scripts/seal.py seal docs/data/data.json docs/data/data.enc
+      - name: 캐시 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+      - name: 결과 반영
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A docs/data/ reports/
+          git diff --cached --quiet || { git commit -m "data: $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M') 주식담보 채우기"; git pull --rebase -X theirs origin main; git push; }

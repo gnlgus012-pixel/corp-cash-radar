@@ -157,10 +157,23 @@ def build(store: dict, data: dict, today: date) -> list[dict]:
                       "issued": ymd_dash(t.get("pymd")),
                       "check": "조기상환 공시 있음" if ers else "잔액 확인",
                       "early_rcept": ers[0]["rcept_no"] if ers else None})
-    # 주식담보 만기: (법인, 대주주) 별 최신 공시
+    # 주식담보 만기: pledge.py 결과(5% 보고서 계약표 + 최대주주변경 수반)가 있으면 그걸로, 없으면 대주주 탭 공시로
+    pl = (data.get("pledge") or {}).get("items") or []
+    for c in pl:
+        d = c.get("end")
+        if not d or not (lo <= d <= hi):
+            continue
+        amt = c.get("loan") or c.get("amount_set") or c.get("value")
+        akind = "대출금액" if c.get("loan") else "담보설정액" if c.get("amount_set") else "담보주식 평가액"
+        items.append({"kind": "주식담보 만기", "corp_code": c["corp_code"], "corp_name": c["corp_name"], "corp_cls": c.get("corp_cls", ""),
+                      "date": d, "amount": amt, "rcept_no": c["rcept_no"],
+                      "label": f"{c.get('person', '')} · {c.get('lender') or ''} · {akind}".strip(" ·"),
+                      "issued": c.get("signed"),
+                      "note": f"{c.get('src')} · 담보 {c.get('shares') or 0:,}주" + (" · 평가액 = 주식수 × 최근 종가" if akind == "담보주식 평가액" else "")})
+        PLEDGE_CHECK.append({"corp": c["corp_name"], "lender": c.get("lender"), "amount": amt, "end": d, "rcept_no": c["rcept_no"]})
     latest = {}
     for i in (data.get("holders") or {}).get("items", []):
-        if i.get("cat") == "주식담보" and i.get("maturity"):
+        if i.get("cat") == "주식담보" and i.get("maturity") and not pl:
             k = (i["corp_code"], i.get("person"))
             if k not in latest or i["date"] > latest[k]["date"]:
                 latest[k] = i
