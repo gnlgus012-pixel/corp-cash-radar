@@ -163,6 +163,10 @@ tbody tr.click:hover{background:var(--surface-2)}
 .tag.unl{background:transparent;color:#64748b;border:1px dashed #94a3b8}
 .tag.unl-ipo{background:#ecfdf5;color:#047857;border:1px dashed #34d399}
 .show-m{display:none}@media (max-width:640px){.show-m{display:inline}}
+.pl-det>td{background:var(--surface-2,#f6f7f9);padding:6px 10px}
+.sub-t{width:100%;font-size:12.5px}.sub-t th{font-weight:600;color:var(--ink-2)}
+.linkbtn{border:0;background:none;color:var(--accent,#1f6feb);cursor:pointer;font-weight:600;padding:0}
+.pl-note{padding:8px 0;border-top:1px solid var(--line)}.pl-note ul{margin:4px 0 0 18px;font-size:13px;line-height:1.55}
 .subnav{display:flex;gap:6px;margin:0 0 12px}
 .subnav button{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600}
 .subnav button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
@@ -433,7 +437,7 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 대주주(개인) -->
   <section class="tab" id="t-owner">
-    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button></div>
+    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button><button data-sub="pledge">주식담보</button></div>
     <h2>대주주(개인) 자금 동향</h2>
     <p class="sub">최대주주와 특수관계인 <b>개인</b>의 지분 매각·매도 계획·경영권 양도·증여·상속·주식담보·배당 수령. 금액에 <span class="tag gray">추정</span>이 붙은 건은 원문에 단가가 없어 종가나 주당배당금으로 계산한 값입니다.</p>
     <div class="grid g4" id="ow-kpis" style="margin-bottom:14px"></div>
@@ -457,7 +461,7 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 대주주 락업 해제 (대주주 탭 안의 하위 화면) -->
   <section class="tab" id="t-lock">
-    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button></div>
+    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button><button data-sub="pledge">주식담보</button></div>
     <h2>대주주 락업 해제 일정</h2>
     <p class="sub">IPO 증권신고서의 최대주주등 의무보유(매각제한) 표, 제3자배정 유상증자의 배정 대상자별 보호예수(락업)를 <b>사람별</b>로 모았습니다. 해제일부터 팔거나 담보로 쓸 수 있어 매각 자금·담보대출 수요가 생기는 시점입니다.
       <br><span class="meta">해제 예정일 = 상장일(상장 전이면 납입일+4일 추정)·신주 상장예정일 + 의무보유 기간. 평가액 = 주식수 × 최근 종가(상장 전은 공모가·발행가). 기간 연장·조기 해제·이미 판 주식은 반영되지 않으니 원문으로 확인하세요.</span></p>
@@ -477,6 +481,33 @@ tbody tr.click:hover{background:var(--surface-2)}
     </div>
     <div class="tw"><table id="lkTable"></table></div>
     <p class="meta" id="lk-foot" style="margin-top:8px"></p>
+  </section>
+
+  <!-- 대주주 주식담보 (대주주 탭 안의 하위 화면) -->
+  <section class="tab" id="t-pledge">
+    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button><button data-sub="pledge">주식담보</button></div>
+    <h2>대주주 주식담보 현황</h2>
+    <p class="sub">대주주·특수관계인이 지금 담보로 잡혀 있는 주식을 <b>사람별</b>로 모았습니다. 만기 전 대환·연장, 저축은행·캐피탈 고금리 담보의 증권사 대환 수요를 찾는 화면입니다.
+      <br><span class="meta">출처 ① 5% 대량보유보고서의 '보유주식등에 관한 계약'(보고자·특별관계자 전원, 보고서마다 현재 유효한 계약 전체를 다시 적음 → 보고자별 최신 보고서 기준) ② 최대주주 변경을 수반하는 주식담보제공 계약 공시(차입·설정 금액) ③ 분기·반기·사업보고서 '주주에 관한 사항'의 담보 문구. 평가액 = 담보 주식수 × 최근 종가. 만기가 지난 계약은 뺐습니다.</span></p>
+    <div class="grid g4" id="pl-kpis" style="margin-bottom:14px"></div>
+    <div class="filters">
+      <div class="seg-btns" id="pl-range">
+        <button data-v="" class="on">전체</button><button data-v="n30">만기 30일</button><button data-v="n90">90일</button><button data-v="n180">6개월</button><button data-v="open">만기 미기재</button>
+      </div>
+      <select id="pl-lk"><option value="">모든 담보권자</option><option value="KIS">한국투자증권</option><option value="NOKIS">한국투자증권 외 전체</option><option value="증권">증권사</option><option value="저축은행">저축은행</option><option value="은행">은행·상호금융</option><option value="캐피탈·여신">캐피탈·여신</option><option value="투자조합·펀드">투자조합·펀드</option><option value="세금·공탁">세금 연부연납·공탁</option><option value="기타(개인·법인)">기타(개인·법인)</option></select>
+      <select id="pl-who"><option value="">개인·법인 모두</option><option value="P" selected>개인만</option><option value="C">법인만</option></select>
+      <select id="pl-min"><option value="0">모든 금액</option><option value="100000000">1억 이상</option><option value="1000000000" selected>10억 이상</option><option value="10000000000">100억 이상</option></select>
+      <select id="pl-mkt"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option><option value="N">코넥스</option></select>
+      <input type="text" id="pl-q" placeholder="법인명·이름·담보권자">
+      <span class="count" id="pl-count"></span>
+    </div>
+    <div class="tw"><table id="plTable"></table></div>
+    <p class="meta" id="pl-foot" style="margin-top:8px"></p>
+    <details class="card" id="pl-notes" style="margin-top:14px">
+      <summary><b>정기보고서 담보 문구</b> <span class="meta" id="pl-notes-n"></span></summary>
+      <p class="meta" style="margin:8px 0">분기·반기·사업보고서 '주주에 관한 사항'에서 담보·질권이 언급된 문장입니다. 5% 보고서에 안 잡히는 소규모 담보, 보고서 제출일까지의 해제 사실 등을 보완합니다. 위 검색어가 같이 적용됩니다.</p>
+      <div id="pl-notes-list"></div>
+    </details>
   </section>
 
   <!-- 만기 캘린더 -->
@@ -622,6 +653,7 @@ const st = {
   ow: {period: 30, cat: "", min: 1e8, mkt: "", q: "", sort: "date", dir: -1},
   cal: {range: "n90", kind: "", min: 1e9, mkt: "", q: "", sort: "date", dir: 1},
   lk: {range: "n90", src: "", min: 1e8, mkt: "", uw: "", q: "", sort: "date", dir: 1},
+  pl: {range: "", lk: "", who: "P", min: 1e9, mkt: "", q: "", sort: "value", dir: -1, open: {}},
 };
 
 /* ── 테마 ── */
@@ -885,7 +917,7 @@ function init(data) {
   $("#banners").innerHTML = b;
 
   (D.calendar?.items || []).forEach(i => { if (i.kind === "보호예수 해제") i.kind = "락업 해제"; });   // 예전 데이터 이름
-  renderBrief(); initFlow(); initOwner(); initLock(); initCal(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
+  renderBrief(); initFlow(); initOwner(); initLock(); initPledge(); initCal(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
   $$("#nav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
   $$(".subnav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.sub));
   $("#t-rate").addEventListener("toggle", e => { if (e.target.open) drawRateCharts(); });
@@ -894,7 +926,7 @@ function init(data) {
 }
 
 const TAB_ALIAS = {prod: "screen"};          // 없앤 탭 주소(#prod)는 옮겨 간 곳으로
-const NAV_PARENT = {lock: "owner"};           // 대주주 탭 안의 하위 화면
+const NAV_PARENT = {lock: "owner", pledge: "owner"};           // 대주주 탭 안의 하위 화면
 function showTab(t) {
   t = TAB_ALIAS[t] || t;
   if (t === "rate") { showTab("brief"); openRates(); return; }
@@ -904,7 +936,7 @@ function showTab(t) {
   $$("section.tab").forEach(s => s.classList.toggle("on", s.id === "t-" + t));
   history.replaceState(null, "", "#" + t);
   // 탭 이동을 '페이지 조회'로 기록 → 애널리틱스 '페이지 제목별 조회수'에 탭 이름으로 집계
-  try { if (window.gtag) gtag("event", "page_view", {page_title: (t === "lock" ? "대주주 락업해제" : $(`#nav button[data-tab="${t}"]`)?.textContent || t), page_location: location.href}); } catch(e) {}
+  try { if (window.gtag) gtag("event", "page_view", {page_title: (t === "lock" ? "대주주 락업해제" : t === "pledge" ? "대주주 주식담보" : $(`#nav button[data-tab="${t}"]`)?.textContent || t), page_location: location.href}); } catch(e) {}
   if (t === "flow") drawFlowChart();
   if (t === "cal") drawCalChart();
   window.scrollTo({top: 0});
@@ -1354,6 +1386,113 @@ function renderLock() {
   $$("#lkTable th.sort").forEach(h => h.onclick = () => { const k = h.dataset.k;
     if (o.sort === k) o.dir *= -1; else { o.sort = k; o.dir = LK_COLS[k].def; } renderLock(); });
   bindCo($("#lkTable"));
+}
+
+/* ── 대주주 주식담보 ── */
+const PL_COLS = {
+  name: {l: "법인", v: g => g.corp_name, def: 1}, person: {l: "담보 제공자 (관계)", v: g => g.person, def: 1},
+  shares: {l: "담보 주식수", v: g => g.shares || null, def: -1}, value: {l: "평가액", v: g => g.value || null, def: -1},
+  n: {l: "계약", v: g => g.items.length, def: -1}, end: {l: "가장 빠른 만기", v: g => g.end || null, def: 1},
+};
+const PL_SRC_TAG = s => s === "5% 보고" ? `<span class="tag k-pledge">5% 보고</span>` : `<span class="tag k-lock">최대주주변경 수반</span>`;
+const plMoney = i => i.loan ? `대출 ${eok(i.loan)}` : i.amount_set ? `설정 ${eok(i.amount_set)}` : "";
+function plGroups() {
+  const m = new Map();
+  for (const i of D.pledge.items) {
+    const k = i.corp_code + "|" + (i.person || "").replace(/\s/g, "");
+    if (!m.has(k)) m.set(k, {key: k, corp_code: i.corp_code, corp_name: i.corp_name, corp_cls: i.corp_cls, person: i.person,
+      rel: i.rel, is_person: i.is_person, items: []});
+    m.get(k).items.push(i);
+  }
+  return [...m.values()];
+}
+function plSum(g, xs) {
+  g.shares = xs.reduce((a, i) => a + (i.shares || 0), 0);
+  g.value = xs.reduce((a, i) => a + (i.value || 0), 0);
+  const ends = xs.map(i => i.end).filter(Boolean).sort();
+  g.end = ends[0] || null;
+  return g;
+}
+function initPledge() {
+  const P = D.pledge;
+  if (!P) { $("#t-pledge").insertAdjacentHTML("beforeend", `<div class="card empty">주식담보 데이터는 다음 갱신부터 표시됩니다.</div>`); return; }
+  const o = st.pl;
+  $$("#pl-range button").forEach(b => b.onclick = () => {
+    $$("#pl-range button").forEach(x => x.classList.toggle("on", x === b)); o.range = b.dataset.v; renderPledge(); });
+  $("#pl-lk").onchange = e => { o.lk = e.target.value; renderPledge(); };
+  $("#pl-who").onchange = e => { o.who = e.target.value; renderPledge(); };
+  $("#pl-min").onchange = e => { o.min = +e.target.value; renderPledge(); };
+  $("#pl-mkt").onchange = e => { o.mkt = e.target.value; renderPledge(); };
+  $("#pl-q").oninput = e => { o.q = e.target.value.replace(/\s/g, ""); renderPledge(); };
+  const it = P.items.filter(i => i.is_person);
+  const val = xs => xs.reduce((a, i) => a + (i.value || 0), 0);
+  const people = xs => new Set(xs.map(i => i.corp_code + i.person)).size;
+  const [a90, b90] = calRange("n90");
+  const s90 = it.filter(i => i.end && i.end >= a90 && i.end <= b90);
+  const hi = it.filter(i => ["저축은행", "캐피탈·여신"].includes(i.lender_kind));
+  $("#pl-kpis").innerHTML = [
+    {l: "담보 잡힌 대주주 (개인)", v: `${people(it).toLocaleString()}명`, n: `${new Set(it.map(i => i.corp_code)).size.toLocaleString()}개 법인 · 평가액 ${eok(val(it))}`},
+    {l: "90일 안 만기", v: eok(val(s90)), n: `${people(s90)}명 · ${s90.length}건 · 대환·연장 수요`},
+    {l: "저축은행·캐피탈 담보", v: eok(val(hi)), n: `${people(hi)}명 · 고금리 → 증권사 대환 후보`},
+    {l: "한국투자증권 담보", v: eok(val(it.filter(i => KIS_RX.test(i.lender)))), n: `${people(it.filter(i => KIS_RX.test(i.lender)))}명 · 기존 거래`},
+  ].map(x => `<div class="card kpi"><div class="lbl">${x.l}</div><div class="val">${x.v}</div><div class="note">${esc(x.n)}</div></div>`).join("");
+  const S = P.stats || {}, pd = S.pending || {};
+  $("#pl-foot").textContent = `5% 보고서 ${S.scan_from ? S.scan_from.slice(0, 4) + "." + S.scan_from.slice(4, 6) : "-"} 이후 · 보고자별 최신 보고서 기준` +
+    ((pd.major || pd.periodic) ? ` · 원문 분석 대기 5% ${(pd.major || 0).toLocaleString()}건 · 정기보고서 ${(pd.periodic || 0).toLocaleString()}건 (매일 이어서 처리)` : "");
+  renderPledge();
+}
+function renderPledge() {
+  const o = st.pl, td = todayIso();
+  const [a, b] = o.range && o.range !== "open" ? calRange(o.range) : [null, null];
+  const lkOk = i => !o.lk || (o.lk === "KIS" ? KIS_RX.test(i.lender) : o.lk === "NOKIS" ? !KIS_RX.test(i.lender) : i.lender_kind === o.lk);
+  const itemOk = i => lkOk(i) && (o.range === "open" ? !i.end : !a || (i.end && i.end >= a && i.end <= b));
+  const groups = plGroups().map(g => { const xs = g.items.filter(itemOk); return xs.length ? plSum({...g, all: g.items, items: xs}, xs) : null; })
+    .filter(g => g && (o.who === "" || (o.who === "P") === !!g.is_person) && (o.min === 0 || (g.value || 0) >= o.min) &&
+      mktMatch(g.corp_code, g.corp_cls, o.mkt) &&
+      (!o.q || (g.corp_name + g.person + g.items.map(i => i.lender).join("")).replace(/\s/g, "").includes(o.q)));
+  const sv = PL_COLS[o.sort].v;
+  groups.sort((x, y) => { const va = sv(x), vb = sv(y);
+    if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+    return (typeof va === "string" ? va.localeCompare(vb, "ko") : va - vb) * o.dir || (y.value || 0) - (x.value || 0); });
+  const th = (k, cls = "") => `<th class="sort ${cls} ${o.sort === k ? (o.dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${PL_COLS[k].l}</th>`;
+  const LIMIT = 400;
+  $("#pl-count").textContent = `${groups.length.toLocaleString()}명 · ${eok(groups.reduce((s2, g) => s2 + (g.value || 0), 0))}`;
+  const lenders = g => [...new Set(g.items.map(i => i.lender).filter(Boolean))];
+  const detail = g => `<tr class="pl-det"><td colspan="8"><table class="sub-t"><thead><tr><th>담보권자</th><th>계약 종류</th><th class="num">주식수</th><th class="num">평가액</th><th>계약기간 · 만기</th><th>체결(변경)일</th><th>출처</th><th>원문</th></tr></thead><tbody>${
+    g.items.slice().sort((x, y) => (x.end || "9999").localeCompare(y.end || "9999")).map(i => `<tr>
+      <td><b class="${KIS_RX.test(i.lender) ? "uw-kis" : ""}">${esc(i.lender || "-")}</b><div class="meta">${esc(i.lender_kind)}</div></td>
+      <td>${esc(i.ctype || "-")}${plMoney(i) ? `<div class="meta">${esc(plMoney(i))}</div>` : ""}</td>
+      <td class="num">${i.shares ? i.shares.toLocaleString() : "-"}</td>
+      <td class="num">${i.value ? eok(i.value) : "-"}</td>
+      <td>${i.end ? `<b>${esc(i.end.replaceAll("-", "."))}</b> <span class="meta">${dday(i.end)}</span>` : `<span class="meta">만기 미기재</span>`}<div class="meta">${esc(i.period || "")}</div></td>
+      <td>${esc((i.signed || "-").replaceAll("-", "."))}</td>
+      <td>${PL_SRC_TAG(i.src)}${i.src2 ? ` <span class="tag k-lock" title="같은 계약이 최대주주 변경 수반 공시에도 있음">+최대주주변경</span>` : ""}<div class="meta">${esc((i.date || "").replaceAll("-", "."))} 공시${i.reason ? " · " + esc(i.reason.slice(0, 30)) : ""}</div></td>
+      <td>${DART_LINK(i, "원문")}</td></tr>`).join("")}</tbody></table></td></tr>`;
+  $("#plTable").innerHTML = `<thead><tr>${th("name")}${th("person")}${th("shares", "num")}${th("value", "num")}${th("n")}${th("end")}<th>출처</th><th></th></tr></thead><tbody>${
+    groups.slice(0, LIMIT).map(g => { const ls = lenders(g), open = o.open[g.key];
+      return `<tr class="${CO_BY_CODE[g.corp_code] ? "click" : ""}" data-co="${esc(g.corp_code)}">
+      <td><b>${esc(g.corp_name)}</b><div class="meta">${mktCell(g.corp_code, g.corp_cls)}</div></td>
+      <td><b>${esc(g.person || "-")}</b><div class="meta">${esc(g.rel || "-")}${g.is_person ? "" : " · 법인"}</div></td>
+      <td class="num">${g.shares ? g.shares.toLocaleString() : "-"}</td>
+      <td class="num">${g.value ? eok(g.value) : "-"}</td>
+      <td><button class="linkbtn pl-tg" data-k="${esc(g.key)}">${open ? "▾" : "▸"} ${g.items.length}건</button><div class="meta">${ls.slice(0, 3).map(l => `<span class="${KIS_RX.test(l) ? "uw-kis" : ""}">${esc(l)}</span>`).join(", ")}${ls.length > 3 ? ` 외 ${ls.length - 3}` : ""}</div></td>
+      <td>${g.end ? `<b>${esc(g.end.replaceAll("-", "."))}</b><div class="meta">${dday(g.end)}</div>` : `<span class="meta">미기재</span>`}</td>
+      <td>${[...new Set(g.items.map(i => i.src))].map(PL_SRC_TAG).join(" ")}</td>
+      <td>${D.pledge.notes?.[g.corp_code] ? `<span class="tag gray" title="정기보고서에 담보 문구 있음">정기보고서</span>` : ""}</td></tr>${open ? detail(g) : ""}`; }).join("")
+    || `<tr><td colspan="8" class="empty">조건에 맞는 주식담보가 없습니다.</td></tr>`}</tbody>`;
+  $$("#plTable th.sort").forEach(h => h.onclick = () => { const k = h.dataset.k;
+    if (o.sort === k) o.dir *= -1; else { o.sort = k; o.dir = PL_COLS[k].def; } renderPledge(); });
+  $$("#plTable .pl-tg").forEach(btn => btn.onclick = e => { e.stopPropagation(); o.open[btn.dataset.k] = !o.open[btn.dataset.k]; renderPledge(); });
+  bindCo($("#plTable"));
+  // 정기보고서 문구
+  const N = Object.entries(D.pledge.notes || {}).filter(([cc, n]) => (!o.mkt || mktMatch(cc, n.corp_cls, o.mkt)) &&
+    (!o.q || (n.corp_name + n.texts.join("")).replace(/\s/g, "").includes(o.q)))
+    .sort((x, y) => x[1].corp_name.localeCompare(y[1].corp_name, "ko"));
+  $("#pl-notes-n").textContent = `${N.length.toLocaleString()}개 법인`;
+  $("#pl-notes-list").innerHTML = N.slice(0, 300).map(([cc, n]) => `<div class="pl-note">
+    <div><b class="${CO_BY_CODE[cc] ? "click" : ""}" data-co="${esc(cc)}">${esc(n.corp_name)}</b> <span class="meta">${esc(n.report)} · ${esc((n.date || "").replaceAll("-", "."))}</span> ${DART_LINK(n, "원문")}</div>
+    <ul>${n.texts.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>`).join("") || `<p class="empty">조건에 맞는 문구가 없습니다.</p>`;
+  bindCo($("#pl-notes-list"));
 }
 
 /* ── 만기 캘린더 ── */
