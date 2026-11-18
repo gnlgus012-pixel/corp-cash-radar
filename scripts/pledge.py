@@ -221,6 +221,14 @@ def doc_lines(txt: str) -> list[str]:
 
 NOTE_RX = re.compile(r"담보|질권")
 NOTE_SKIP = re.compile(r"해당\s*사항\s*(이\s*)?없|종속기업|관계기업|유형자산|전환사채\s*관련|사채권자|토지|건물")
+# 대주주 주식이 담보로 잡힌 문장만: '주식'과 '담보·질권'이 가깝게 붙어 있거나 반대매매·담보권 실행
+NOTE_POS = re.compile(r"(주식|주권|보통주).{0,40}(담보|질권)|(담보|질권).{0,40}(주식|주권|보통주)|반대매매|담보권\s*실행")
+NOTE_WHO = re.compile(r"최대주주|대표이사|특수관계인|회장|주주|본인")
+NOTE_NEG = re.compile(r"없습니다|없음|없으며|해당\s*사항|정관|인수목적|스팩|예치|신탁|지급보증|배당|질권자에게|제공받은\s*담보|여신전문|계속보유확약|차입할\s*수\s*없")
+
+
+def good_note(l: str) -> bool:
+    return bool(NOTE_POS.search(l) and NOTE_WHO.search(l) and not NOTE_NEG.search(l) and not NOTE_SKIP.search(l))
 
 
 def parse_periodic(txt: str) -> dict:
@@ -234,7 +242,7 @@ def parse_periodic(txt: str) -> dict:
             best = lines[s:e]
     notes = []
     for l in best:
-        if NOTE_RX.search(l) and len(l) >= 15 and not NOTE_SKIP.search(l):
+        if NOTE_RX.search(l) and len(l) >= 15 and good_note(l):
             l = l[:400]
             if l not in notes:
                 notes.append(l)
@@ -415,10 +423,11 @@ def build(store: dict, hstore: dict, prices: dict, today: date, corp_map: dict) 
     # ③ 정기보고서 문구
     notes = {}
     for rn, d in store["docs"].items():
-        if d["kind"] == "periodic" and (d.get("parsed") or {}).get("notes"):
+        texts = [t for t in (d.get("parsed") or {}).get("notes") or [] if good_note(t)] if d["kind"] == "periodic" else []
+        if texts:
             notes[d["corp_code"]] = {"corp_name": d["corp_name"], "corp_cls": d.get("corp_cls", ""),
                                      "stock_code": d.get("stock_code", ""), "rcept_no": rn,
-                                     "report": d["report_nm"], "date": H.ymd_dash(d["date"]), "texts": d["parsed"]["notes"]}
+                                     "report": d["report_nm"], "date": H.ymd_dash(d["date"]), "texts": texts}
     return items, notes
 
 
