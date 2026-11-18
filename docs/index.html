@@ -163,7 +163,7 @@ tbody tr.click:hover{background:var(--surface-2)}
 .tag.unl{background:transparent;color:#64748b;border:1px dashed #94a3b8}
 .tag.unl-ipo{background:#ecfdf5;color:#047857;border:1px dashed #34d399}
 .show-m{display:none}@media (max-width:640px){.show-m{display:inline}}
-.pl-det>td{background:var(--surface-2,#f6f7f9);padding:6px 10px}
+.pl-det>td{background:var(--surface-2,#f6f7f9);padding:6px 10px}.sub-w{overflow-x:auto;width:0;min-width:100%}.sub-t td,.sub-t th{padding:6px 8px}.sub-t{table-layout:fixed}.sub-t td{white-space:normal;word-break:keep-all}.sub-t .meta{white-space:normal}
 .sub-t{width:100%;font-size:12.5px}.sub-t th{font-weight:600;color:var(--ink-2)}
 .linkbtn{border:0;background:none;color:var(--accent,#1f6feb);cursor:pointer;font-weight:600;padding:0}
 .pl-note{padding:8px 0;border-top:1px solid var(--line)}.pl-note ul{margin:4px 0 0 18px;font-size:13px;line-height:1.55}
@@ -1458,7 +1458,7 @@ function renderPledge() {
   const LIMIT = 400;
   $("#pl-count").textContent = `${groups.length.toLocaleString()}명 · ${eok(groups.reduce((s2, g) => s2 + (g.value || 0), 0))}`;
   const lenders = g => [...new Set(g.items.map(i => i.lender).filter(Boolean))];
-  const detail = g => `<tr class="pl-det"><td colspan="8"><table class="sub-t"><thead><tr><th>담보권자</th><th>계약 종류</th><th class="num">주식수</th><th class="num">평가액</th><th>계약기간 · 만기</th><th>체결(변경)일</th><th>출처</th><th>원문</th></tr></thead><tbody>${
+  const detail = g => `<tr class="pl-det"><td colspan="8"><div class="sub-w"><table class="sub-t"><colgroup><col style="width:18%"><col style="width:14%"><col style="width:11%"><col style="width:9%"><col style="width:21%"><col style="width:10%"><col style="width:17%"></colgroup><thead><tr><th>담보권자</th><th>계약 종류</th><th class="num">주식수</th><th class="num">평가액</th><th>만기 · 계약기간</th><th>체결(변경)일</th><th>출처 · 원문</th></tr></thead><tbody>${
     g.items.slice().sort((x, y) => (x.end || "9999").localeCompare(y.end || "9999")).map(i => `<tr>
       <td><b class="${KIS_RX.test(i.lender) ? "uw-kis" : ""}">${esc(i.lender || "-")}</b><div class="meta">${esc(i.lender_kind)}</div></td>
       <td>${esc(i.ctype || "-")}${plMoney(i) ? `<div class="meta">${esc(plMoney(i))}</div>` : ""}</td>
@@ -1466,8 +1466,7 @@ function renderPledge() {
       <td class="num">${i.value ? eok(i.value) : "-"}</td>
       <td>${i.end ? `<b>${esc(i.end.replaceAll("-", "."))}</b> <span class="meta">${dday(i.end)}</span>` : `<span class="meta">만기 미기재</span>`}<div class="meta">${esc(i.period || "")}</div></td>
       <td>${esc((i.signed || "-").replaceAll("-", "."))}</td>
-      <td>${PL_SRC_TAG(i.src)}${i.src2 ? ` <span class="tag k-lock" title="같은 계약이 최대주주 변경 수반 공시에도 있음">+최대주주변경</span>` : ""}<div class="meta">${esc((i.date || "").replaceAll("-", "."))} 공시${i.reason ? " · " + esc(i.reason.slice(0, 30)) : ""}</div></td>
-      <td>${DART_LINK(i, "원문")}</td></tr>`).join("")}</tbody></table></td></tr>`;
+      <td>${PL_SRC_TAG(i.src)}${i.src2 ? ` <span class="tag k-lock" title="같은 계약이 최대주주 변경 수반 공시에도 있음">+최대주주변경</span>` : ""}<div class="meta">${esc((i.date || "").replaceAll("-", "."))} 공시 · ${DART_LINK(i, "원문")}</div>${i.reason ? `<div class="meta">${esc(i.reason.slice(0, 30))}</div>` : ""}</td></tr>`).join("")}</tbody></table></div></td></tr>`;
   $("#plTable").innerHTML = `<thead><tr>${th("name")}${th("person")}${th("shares", "num")}${th("value", "num")}${th("n")}${th("end")}<th>출처</th><th></th></tr></thead><tbody>${
     groups.slice(0, LIMIT).map(g => { const ls = lenders(g), open = o.open[g.key];
       return `<tr class="${CO_BY_CODE[g.corp_code] ? "click" : ""}" data-co="${esc(g.corp_code)}">
@@ -1475,7 +1474,7 @@ function renderPledge() {
       <td><b>${esc(g.person || "-")}</b><div class="meta">${esc(g.rel || "-")}${g.is_person ? "" : " · 법인"}</div></td>
       <td class="num">${g.shares ? g.shares.toLocaleString() : "-"}</td>
       <td class="num">${g.value ? eok(g.value) : "-"}</td>
-      <td><button class="linkbtn pl-tg" data-k="${esc(g.key)}">${open ? "▾" : "▸"} ${g.items.length}건</button><div class="meta">${ls.slice(0, 3).map(l => `<span class="${KIS_RX.test(l) ? "uw-kis" : ""}">${esc(l)}</span>`).join(", ")}${ls.length > 3 ? ` 외 ${ls.length - 3}` : ""}</div></td>
+      <td class="wrap"><button class="linkbtn pl-tg" data-k="${esc(g.key)}">${open ? "▾" : "▸"} ${g.items.length}건</button><div class="meta">${ls.slice(0, 3).map(l => `<span class="${KIS_RX.test(l) ? "uw-kis" : ""}" title="${esc(l)}">${esc(l.length > 18 ? l.slice(0, 18) + "…" : l)}</span>`).join(", ")}${ls.length > 3 ? ` 외 ${ls.length - 3}` : ""}</div></td>
       <td>${g.end ? `<b>${esc(g.end.replaceAll("-", "."))}</b><div class="meta">${dday(g.end)}</div>` : `<span class="meta">미기재</span>`}</td>
       <td>${[...new Set(g.items.map(i => i.src))].map(PL_SRC_TAG).join(" ")}</td>
       <td>${D.pledge.notes?.[g.corp_code] ? `<span class="tag gray" title="정기보고서에 담보 문구 있음">정기보고서</span>` : ""}</td></tr>${open ? detail(g) : ""}`; }).join("")
