@@ -50,6 +50,20 @@ def nz(s) -> str:
     return re.sub(r"\s+", "", str(s or ""))
 
 
+def lnorm(s) -> str:
+    """담보권자 이름 비교용: (주)·㈜·주식회사·괄호 설명·'등 n인'·공백 제거"""
+    s = re.sub(r"\(주\)|㈜|주식회사|\(담보권자\)|등\s*\d+\s*(인|명|개사)", "", str(s or ""))
+    s = re.sub(r"\([^)]*\)", "", s)
+    return re.sub(r"[\s.,·]+", "", s)
+
+
+def same_lender(a, b) -> bool:
+    a, b = lnorm(a), lnorm(b)
+    if not a or not b:
+        return True
+    return a == b or (len(min(a, b, key=len)) >= 4 and (a in b or b in a))
+
+
 def num(s) -> int | None:
     s = str(s or "").replace(",", "").strip()
     m = re.fullmatch(r"-?\d+(\.\d+)?", s)
@@ -239,10 +253,14 @@ def parse_pending(store: dict) -> None:
     pend = [(rn, d) for rn, d in store["docs"].items()
             if (d["kind"] != "major" or rn in keep)
             and d.get("pv") != (MAJOR_VER if d["kind"] == "major" else NOTE_VER) and d.get("tries", 0) < 3]
-    # 5% 보고서 먼저(최신순), 그다음 정기보고서
-    pend = sorted([p for p in pend if p[1]["kind"] == "major"],
-                  key=lambda x: ("약식" not in x[1]["report_nm"], x[0]), reverse=True) + \
-        sorted([p for p in pend if p[1]["kind"] != "major"], key=lambda x: x[0], reverse=True)
+    # 5% 보고서 3건 : 정기보고서 1건 비율로 섞어서(최신순) — 한쪽만 밀리지 않게
+    mj = sorted([p for p in pend if p[1]["kind"] == "major"],
+                key=lambda x: ("약식" not in x[1]["report_nm"], x[0]), reverse=True)
+    pr = sorted([p for p in pend if p[1]["kind"] != "major"], key=lambda x: x[0], reverse=True)
+    pend = []
+    while mj or pr:
+        pend += mj[:3] + pr[:1]
+        mj, pr = mj[3:], pr[1:]
     PENDING["major"] = [rn for rn, d in pend if d["kind"] == "major"]
     PENDING["periodic"] = [rn for rn, d in pend if d["kind"] != "major"]
     C.log(f"주식담보 원문 대기 {len(pend):,}건 (5% {sum(1 for p in pend if p[1]['kind'] == 'major'):,})")
@@ -316,6 +334,7 @@ def build(store: dict, hstore: dict, prices: dict, today: date, corp_map: dict) 
         if k not in latest or rn > latest[k]:
             latest[k] = rn
     items = []
+    seen = set()
     for (cc, _), rn in latest.items():
         d = store["docs"][rn]
         p = d["parsed"]
@@ -324,10 +343,19 @@ def build(store: dict, hstore: dict, prices: dict, today: date, corp_map: dict) 
             if not is_pledge(c["ctype"]):
                 STATS["non_pledge_contract"] += 1
                 continue
+            if not c.get("shares") or c["shares"] <= 0:
+                STATS["zero_shares"] += 1
+                continue
             st, end, open_end = period_end(c["period"])
             if end and end < td:
                 STATS["expired"] += 1
                 continue
+            # 정정보고서에 정정 전·후 표가 함께 실리면 같은 행이 두 번 나온다 → 한 번만
+            key = (rn, nz(c["name"]), c["shares"], nz(c["party"]), c["signed"], c["period"])
+            if key in seen:
+                STATS["dup_row"] += 1
+                continue
+            seen.add(key)
             amt = next((l["amount"] for l in loans if l.get("shares") and l["shares"] == c["shares"]), None)
             items.append({"corp_code": cc, "corp_name": d["corp_name"], "corp_cls": d.get("corp_cls", ""),
                           "stock_code": d.get("stock_code") or corp_map.get(cc, {}).get("stock_code", ""),
@@ -354,8 +382,16 @@ def build(store: dict, hstore: dict, prices: dict, today: date, corp_map: dict) 
             end = c.get("end")
             if end and end < td:
                 continue
-            match = next((x for x in idx.get(cc, []) if x["shares"] and c.get("shares") == x["shares"]
-                          and (nz(c.get("lender"))[:2] == nz(x["lender"])[:2] or not c.get("lender"))), None)
+            if not c.get("shares"):
+                continue
+            cands = [x for x in idx.get(cc, []) if x["src"] == "5% 보고" and same_lender(c.get("lender"), x["lender"])]
+            # 주식 수가 같은 계약 우선. 없으면 5% 보고서가 더 최신일 때 같은 담보권자 중 주식 수가 가장 가까운 계약
+            # (5% 보고서는 그 시점 계약 전체를 다시 싣기 때문에 수량이 바뀐 같은 계약으로 본다)
+            match = next((x for x in cands if x["shares"] == c["shares"]), None)
+            if not match:
+                newer = [x for x in cands if x["rcept_no"][:8] >= rn[:8] and "amount_set" not in x]
+                if newer:
+                    match = min(newer, key=lambda x: abs(x["shares"] - c["shares"]))
             if match:
                 match["amount_set"] = c.get("amount")
                 match["src2"] = rn
