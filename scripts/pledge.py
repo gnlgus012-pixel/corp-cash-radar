@@ -227,6 +227,15 @@ NOTE_WHO = re.compile(r"최대주주|대표이사|특수관계인|회장|주주|
 NOTE_NEG = re.compile(r"없습니다|없음|없으며|해당\s*사항|정관|인수목적|스팩|예치|신탁|지급보증|배당|질권자에게|제공받은\s*담보|여신전문|계속보유확약|차입할\s*수\s*없")
 
 
+def snip(l: str, w: int = 110) -> str:
+    """긴 문장(표가 한 줄로 붙은 경우 등)은 담보 단어 앞뒤만 잘라서"""
+    if len(l) <= 2 * w + 20:
+        return l
+    m = NOTE_POS.search(l)
+    a = max(0, (m.start() if m else 0) - w)
+    return ("…" if a else "") + l[a:a + 2 * w] + "…"
+
+
 def good_note(l: str) -> bool:
     return bool(NOTE_POS.search(l) and NOTE_WHO.search(l) and not NOTE_NEG.search(l) and not NOTE_SKIP.search(l))
 
@@ -423,7 +432,7 @@ def build(store: dict, hstore: dict, prices: dict, today: date, corp_map: dict) 
     # ③ 정기보고서 문구
     notes = {}
     for rn, d in store["docs"].items():
-        texts = [t for t in (d.get("parsed") or {}).get("notes") or [] if good_note(t)] if d["kind"] == "periodic" else []
+        texts = [snip(t) for t in (d.get("parsed") or {}).get("notes") or [] if good_note(t)] if d["kind"] == "periodic" else []
         if texts:
             notes[d["corp_code"]] = {"corp_name": d["corp_name"], "corp_cls": d.get("corp_cls", ""),
                                      "stock_code": d.get("stock_code", ""), "rcept_no": rn,
