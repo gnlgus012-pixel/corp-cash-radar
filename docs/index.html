@@ -1707,7 +1707,26 @@ function renderScreen() {
     if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
     return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * s.dir;
   });
-  $("#sc-count").textContent = `${rows.length.toLocaleString()}개사`;
+  // 걸려 있는 조건을 보이게 — 담당 지역·자금 성격 칩 등이 남아 있으면 대형사가 빠져 보일 수 있음
+  const on = [];
+  const R = loadRegion();
+  if (R.sido) on.push(`담당 지역 ${R.sgg ? R.sido + " " + R.sgg : R.sido}`);
+  if (s.mkt) on.push(s.mkt === "Y" ? "유가" : "코스닥");
+  if (s.seg) on.push(`자금 성격 ${SEG_LABEL[s.seg] || s.seg}`);
+  if (s.min) on.push(`점수 ${s.min}↑`);
+  if (s.fin) on.push("재무 확보만");
+  if (s.watch) on.push("관심법인만");
+  if (q) on.push(`'${s.q}' 검색`);
+  $("#sc-count").innerHTML = `${rows.length.toLocaleString()}개사${on.length ? ` · <span style="color:#d6336c">조건: ${esc(on.join(", "))}</span> <a href="#" id="sc-reset">모두 해제</a>` : ""}`;
+  const rs = $("#sc-reset");
+  if (rs) rs.onclick = e => {
+    e.preventDefault();
+    Object.assign(s, {mkt: "", seg: "", min: 0, fin: false, watch: false, q: ""});
+    $("#s-mkt").value = ""; $("#s-seg").value = ""; $("#s-min").value = 0; $("#s-min-v").textContent = "0"; $("#s-fin").checked = false; $("#s-q").value = "";
+    if ($("#s-watch")) $("#s-watch").checked = false;
+    if (R.sido) { try { localStorage.setItem(RG_KEY, JSON.stringify({})); } catch (x) {} location.reload(); return; }
+    renderScreen();
+  };
   $$("#segchips .segchip").forEach(b => b.classList.toggle("on", b.dataset.seg === s.seg));
   $("#scTable").innerHTML = `<thead><tr>${SC_COLS.map(c => `<th class="sort ${c.num ? "num" : ""} ${c.m ? "hide-m" : ""} ${s.sort === c.k ? (s.dir > 0 ? "asc" : "desc") : ""}" data-k="${c.k}"${c.tip ? ` title="${esc(c.tip)}"` : ""}>${c.l}</th>`).join("")}</tr></thead>
   <tbody>${rows.slice(0, 500).map(c => {
