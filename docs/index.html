@@ -1930,6 +1930,10 @@ function mpTags(o) {
   if (o.p.lv > 1) t.push(`<span class="tag gray" title="주소로 건물을 못 찾아 ${o.p.lv === 2 ? "동·읍·면" : "시군구"} 중심에 표시">위치 대략</span>`);
   return t.join("");
 }
+// 지도 앱 검색용 주소: 괄호·층·호수 등 건물 뒤 꼬리를 떼야 두 지도 모두 정확히 찾는다
+const mpAddr = a => { const b = String(a || "").replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  const m = b.match(/^(.+?(?:로|길)\s*\d+(?:-\d+)?)(?=[\s,]|$)/) || b.match(/^(.+?(?:동|리|가)\s*\d+(?:-\d+)?)(?=[\s,]|$)/);
+  return m ? m[1] : b; };
 function mpPopup(o) {
   const c = o.co, i = c?.info || {};
   return `<div class="mp-pop"><b>${esc(o.p.n)}</b> <span class="meta">${esc(c?.market_label || "")}</span>
@@ -1937,7 +1941,8 @@ function mpPopup(o) {
     ${i.ceo || i.phone ? `<div class="row">${i.ceo ? "대표 " + esc(i.ceo) : ""}${i.phone ? " · " + esc(i.phone) : ""}</div>` : ""}
     <div class="row tags" style="display:flex;flex-wrap:wrap;gap:4px">${mpTags(o)}</div>
     <div class="row">${c ? `<a href="#" data-co="${o.cc}">상세 보기</a> · ` : ""}<a href="https://dart.fss.or.kr/dsab007/main.do?option=corp&textCrpNm=${encodeURIComponent(o.p.n)}" target="_blank" rel="noopener">DART</a>
-      · <a href="https://map.kakao.com/link/search/${encodeURIComponent(o.p.a)}" target="_blank" rel="noopener">카카오맵</a></div></div>`;
+      · <a href="https://map.kakao.com/link/search/${encodeURIComponent(mpAddr(o.p.a))}" target="_blank" rel="noopener">카카오맵</a>
+      · <a href="https://map.naver.com/p/search/${encodeURIComponent(mpAddr(o.p.a))}" target="_blank" rel="noopener">네이버지도</a></div></div>`;
 }
 function mpLoadLib() {
   if (window.L) return Promise.resolve(window.L);
