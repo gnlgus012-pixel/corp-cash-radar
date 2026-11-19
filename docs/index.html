@@ -357,6 +357,15 @@ tbody tr.click:hover{background:var(--surface-2)}
   .leaflet-container a.leaflet-popup-close-button{width:34px!important;height:34px!important;font:26px/32px Tahoma,sans-serif!important;top:4px!important;right:4px!important;background:#fff!important;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.35);color:#333!important;text-align:center}
   .mp-pop details summary{cursor:pointer;color:var(--accent);margin-top:4px}
 }
+.mp-pts{margin:6px 0 2px;padding-left:18px}
+.mp-pts li{margin:0 0 7px;line-height:1.45}
+.mp-pts li .k{display:inline-block;font-size:11.5px;font-weight:700;padding:0 6px;border-radius:4px;background:var(--surface-2);color:var(--ink-2);margin-right:2px}
+.mp-pts li.hot .k{background:#d6336c;color:#fff}
+.mp-pts li .act{color:#1f6feb;font-size:12.5px;margin-top:1px}.mp-pts li .act b{font-size:11px;border:1px solid #1f6feb;border-radius:4px;padding:0 4px;margin-right:4px;font-weight:600}
+.mp-li-pt{font-size:12.5px;margin-top:3px;color:var(--ink-2)}
+.mp-li-pt b{margin-right:4px}
+.mp-li-pt.hot b{color:#d6336c}
+.mp-pop details summary{cursor:pointer;color:var(--accent);font-size:12.5px}
 </style>
 </head>
 <body>
@@ -1940,7 +1949,7 @@ function mpInfo() {   // 법인별 섭외 정보 (등급·대주주 이슈) — 
   (R.lockup?.items || []).forEach(i => { const o = I[i.corp_code]; if (!o || !i.date || i.date < td || i.date > lim) return;
     const x = o.lk ??= {date: i.date, n: 0, amt: 0}; if (i.date < x.date) x.date = i.date; x.n++; x.amt += i.amount || 0; });
   const since = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10).replaceAll("-", "");
-  (R.holders?.items || []).forEach(i => { const o = I[i.corp_code]; if (o && (i.date || "") >= since && !i.cancelled) o.ow++; });
+  (R.holders?.items || []).forEach(i => { const o = I[i.corp_code]; if (o && (i.date || "") >= since && !i.cancelled) { o.ow++; (o.owr ??= []).push(i); } });
   Object.values(I).forEach(o => {
     o.score = o.co?.score ?? null;
     o.owner = !!(o.pl || o.lk || o.ow);
@@ -1981,20 +1990,46 @@ const mpShort = o => {   // 점 위 이름표에 붙이는 한 줄 요약
   if (o.score >= 1) t.push(`여유 ${o.score.toFixed(0)}`);
   return t.join(" · ");
 };
-function mpTags(o) {
-  const t = [];
-  t.push(`<span class="mp-g g${o.grade}" title="섭외 등급">${o.grade}</span>`);
+// 섭외 포인트: "무슨 일이 있고(사실) → 그래서 무엇을 제안할지(액션)" 한 줄씩 — 팝업·목록 공용
+const pName = i => `${i.person}${i.rel || i.relation ? `(${i.rel || i.relation})` : ""}`;
+function mpPoints(o) {
+  const P = [], td = todayIso(), d90 = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10);
+  const loanOf = i => i.loan || i.amount_set;
+  const lnm = l => { const x = String(l || "").replace(/\(주\)|㈜|주식회사/g, "").trim(); return x.length > 16 ? x.slice(0, 16) + "…" : x; };
+  const rowTxt = i => `${pName(i)}: ${lnm(i.lender)}에서 ${loanOf(i) ? eok(loanOf(i)) + " 대출" : "대출"} (담보 주식 ${i.value ? eok(i.value) : (i.shares || 0).toLocaleString() + "주"})${i.end ? ` · 만기 ${ymdDot(i.end)} (${dday(i.end)})` : ""}`;
+  if (o.pl) {
+    const rows = o.pl.rows, big = (xs) => xs.slice().sort((a, b) => (b.value || 0) - (a.value || 0))[0];
+    const alt = rows.filter(i => plAlt(i.lender_kind));
+    const soon = rows.filter(i => !plAlt(i.lender_kind) && i.end && i.end >= td && i.end <= d90);
+    if (alt.length) P.push({hot: 1, k: "대환 후보", fact: rowTxt(big(alt)) + (alt.length > 1 ? ` 외 ${alt.length - 1}건` : ""),
+      act: "증권사 주식담보대출로 갈아타기 (저축은행·캐피탈은 금리가 높음)"});
+    if (soon.length) P.push({hot: 1, k: "담보 만기 임박", fact: rowTxt(soon.slice().sort((a, b) => a.end.localeCompare(b.end))[0]) + (soon.length > 1 ? ` 외 ${soon.length - 1}건` : ""),
+      act: "만기 연장·대환 조건 비교 (결정 시점)"});
+    if (o.pl.kis) P.push({k: "기존 한투 거래", fact: `한국투자증권이 이미 담보권자 (${o.pl.kis}건)`, act: "담당 지점 확인 후 함께 방문 (기존 고객)"});
+    if (!alt.length && !soon.length) P.push({k: "주식담보", fact: `대주주 ${o.pl.ppl.size}명 · ${o.pl.n}건 · 담보 주식 ${o.pl.v ? eok(o.pl.v) : "-"}${o.pl.end ? ` · 가장 빠른 만기 ${ymdDot(o.pl.end)}` : ""}`,
+      act: "만기 전 대환·추가 한도 상담"});
+  }
+  if (o.lk) P.push({hot: o.lk.date <= d90, k: "락업 해제", fact: `${ymdDot(o.lk.date)} (${dday(o.lk.date)}) 대주주 주식 보호예수 해제${o.lk.amt ? ` · ${eok(o.lk.amt)}` : ""}`,
+    act: "풀리는 주식의 매도 자금·자산관리 상담"});
+  if (o.owr?.length) {
+    const h = o.owr.slice().sort((a, b) => (b.amount || 0) - (a.amount || 0))[0];
+    P.push({k: "대주주 지분 공시", fact: `${pName(h)} ${h.cat}${h.amount ? ` ${eok(h.amount)}${h.est ? " 추정" : ""}` : ""}${h.event_date ? ` · ${ymdDot(h.event_date)}` : ""}${o.owr.length > 1 ? ` (90일 ${o.owr.length}건)` : ""}`,
+      act: /매도|매각|처분/.test(h.cat) ? "매각 대금 운용" : /증여|상속/.test(h.cat) ? "증여·상속 세금 납부·자산 이전 상담" : "지분 변동 관련 자금 수요 확인"});
+  }
+  if ((o.score || 0) >= 60) {
+    const f = o.co?.fin || {}, m = o.co?.metrics || {};
+    P.push({hot: o.score >= 70, k: "법인 여유자금", fact: `여유자금 ${o.score.toFixed(0)}점 · 현금성자산 ${m.cash_total ? eok(m.cash_total) : f.cash ? eok(f.cash) : "-"}${m.cash_growth ? ` (전기 대비 ${m.cash_growth > 0 ? "+" : ""}${Math.round(m.cash_growth * 100)}%)` : ""}`,
+      act: "법인 자금 운용 (MMF·단기채·랩)"});
+  }
+  return P;
+}
+const mpPointsHtml = (o, max = 4) => { const P = mpPoints(o); return P.length ? `<ol class="mp-pts">${P.slice(0, max).map(x =>
+  `<li class="${x.hot ? "hot" : ""}"><span class="k">${esc(x.k)}</span> ${esc(x.fact)}<div class="act"><b>제안</b> ${esc(x.act)}</div></li>`).join("")}</ol>` : ""; };
+function mpTags(o) {   // 목록용 짧은 태그 (내용은 섭외 포인트 줄에서)
+  const t = [`<span class="mp-g g${o.grade}" title="섭외 등급 A: 지금 갈 이유 / B: 대주주 이슈·여유자금 60점↑ / C: 그 외">${o.grade}</span>`];
   if (o.co?.watch) t.push('<span class="tag gray">관심법인</span>');
   if (o.score != null) t.push(`<span class="tag ${o.score >= 60 ? "in" : "gray"}" title="여유자금 점수 (현금성자산·현금비중·현금증감·유입공시, 100점 만점)">여유자금 ${o.score.toFixed(0)}점</span>`);
-  if (o.co) t.push(segTag(o.co.segment));
-  if (o.pl) t.push(`<span class="tag k-pledge" title="대주주(개인)가 이 회사 주식을 담보로 잡힌 계약">대주주 주식담보 ${o.pl.ppl.size}명 ${o.pl.v ? eok(o.pl.v) : ""}${o.pl.end ? " · 만기 " + ymdDot(o.pl.end) : ""}</span>`);
-  if (o.pl?.kis) t.push(`<span class="tag k-uw-kis" title="담보권자가 한국투자증권인 계약 = 우리 회사가 이미 대출해 준 대주주">한투가 담보권자 ${o.pl.kis}건</span>`);
-  if (o.pl?.alt) t.push(`<span class="tag out" title="저축은행·캐피탈 담보 = 금리가 높아 증권사 담보대출로 대환 제안 여지">저축은행·캐피탈 ${o.pl.alt}건</span>`);
-  if (o.lk) t.push(`<span class="tag out" title="상장 때 묶인 대주주 주식이 풀리는 날">락업 해제 ${ymdDot(o.lk.date)}${o.lk.amt ? " · " + eok(o.lk.amt) : ""}</span>`);
-  if (o.ow) t.push(`<span class="tag gray" title="최근 90일 대주주 지분 매각·증여·담보 등 공시">대주주 공시 ${o.ow}건 (90일)</span>`);
-  if (o.off) t.push(`<span class="tag" style="background:${siteT(o.off).c}1a;color:${siteT(o.off).c}" title="DART 본점(등기)은 ${esc(o.home.a)} — 카카오 장소 '${esc(o.off.pn)}'(${esc(o.off.cat)})">${siteT(o.off).l} · 본점은 ${esc(o.home.a.split(" ").slice(0, 2).join(" "))}</span>`);
-  else if (o.p.o?.length) t.push(`<span class="tag gray" title="${esc(o.p.o.map(f => siteT(f).l + ": " + f.pn + " " + f.a).join(" / "))}">다른 사업장 ${o.p.o.length}곳 (${[...new Set(o.p.o.map(f => siteT(f).l))].join("·")})</span>`);
-  else if (o.p.ph) t.push(`<span class="tag gray" title="본점은 지방이지만 대표·공시담당 전화가 ${o.p.ph} 번호 — 수도권 사무소가 있을 수 있음">전화 ${o.p.ph} 번호</span>`);
+  if (o.off) t.push(`<span class="tag" style="background:${siteT(o.off).c}1a;color:${siteT(o.off).c}" title="DART 본점(등기)은 ${esc(o.home.a)}">${siteT(o.off).l} · 본점은 ${esc(o.home.a.split(" ").slice(0, 2).join(" "))}</span>`);
   if (o.p.lv > 1) t.push(`<span class="tag gray" title="주소로 건물을 못 찾아 ${o.p.lv === 2 ? "동·읍·면" : "시군구"} 중심에 표시">위치 대략</span>`);
   return t.join("");
 }
@@ -2012,11 +2047,9 @@ function mpPopup(o) {
   return `<div class="mp-pop"><b>${esc(o.p.n)}</b> <span class="meta">${esc(c?.market_label || "")}</span>
     <div class="row meta">${o.off ? `<b style="color:${siteT(o.off).c}">[${siteT(o.off).l}]</b> <b>${esc(o.off.pn)}</b> ${esc(o.p.a)}<br>본점(DART)은 다른 곳: ${esc(o.home.a)}` : esc(o.p.a)}${!o.off && o.p.o?.length ? `<br>다른 사업장: ${o.p.o.map(f => `[${siteT(f).l}] ${esc(f.pn)}`).join(", ")}` : ""}</div>
     ${i.ceo || i.phone ? `<div class="row">${i.ceo ? "대표 " + esc(i.ceo) : ""}${i.phone ? " · " + esc(i.phone) : ""}</div>` : ""}
-    ${o.why.length ? `<div class="row mp-why"><b>지금 갈 이유</b> ${o.why.map(esc).join(" · ")}</div>` : ""}
-    <div class="row" style="display:flex;flex-wrap:wrap;gap:4px">${mpTags(o)}</div>
-    ${o.pl ? (innerWidth <= 900
-      ? `<details class="row"><summary><b style="font-size:13px">대주주 주식담보 ${o.pl.n}건 보기</b></summary>${plRowsHtml(o.pl.rows, 4)}</details>`
-      : `<div class="row"><b style="font-size:13px">대주주 주식담보</b>${plRowsHtml(o.pl.rows, 4)}</div>`) : ""}
+    <div class="row"><span class="mp-g g${o.grade}">${o.grade}</span> <b style="font-size:13px">섭외 포인트</b>${o.score != null && o.score < 60 ? ` <span class="meta">여유자금 ${o.score.toFixed(0)}점</span>` : ""}</div>
+    ${mpPointsHtml(o) || '<div class="row meta">눈에 띄는 대주주 이슈·여유자금 신호 없음</div>'}
+    ${o.pl ? `<details class="row"><summary>담보 계약 ${o.pl.n}건 전체 보기</summary>${plRowsHtml(o.pl.rows, 8)}</details>` : ""}
     <div class="row">${c ? `<a href="#" data-co="${o.cc.split("@")[0]}">상세 보기</a> · ` : ""}<a href="https://dart.fss.or.kr/dsab007/main.do?option=corp&textCrpNm=${encodeURIComponent(o.p.n)}" target="_blank" rel="noopener">DART</a>
       · <a href="https://map.kakao.com/link/search/${encodeURIComponent(mpAddr(o.p.a))}" target="_blank" rel="noopener">카카오맵</a>
       · <a href="https://map.naver.com/p/search/${encodeURIComponent(mpAddr(o.p.a))}" target="_blank" rel="noopener">네이버지도</a></div></div>`;
@@ -2129,7 +2162,7 @@ function mpRender() {
   $("#mp-count").textContent = `지도 화면 안 ${near.length.toLocaleString()}개사 (A ${gc.A} · B ${gc.B}${gc.C ? " · C " + gc.C : ""})${MP.f ? ` · 전체 ${vis.length.toLocaleString()}개사 중` : ""}`;
   $("#mp-list").innerHTML = near.length ? near.slice(0, 300).map(({o, d}) => `<div class="mp-it" data-cc="${o.k}">
       <div class="t"><span><span class="mp-dot" style="background:${mpColor(o)}"></span><b>${esc(o.p.n)}</b> <span class="meta">${esc(o.co?.market_label || "")}</span></span><span class="meta">${MP.place} ${distTxt(d)}</span></div>
-      ${o.why.length ? `<div class="mp-why">${o.why.map(esc).join(" · ")}</div>` : ""}
+      ${(() => { const P = mpPoints(o); return P.length ? `<div class="mp-li-pt ${P[0].hot ? "hot" : ""}"><b>${esc(P[0].k)}</b> ${esc(P[0].fact)}${P.length > 1 ? ` <span class="meta">+${P.length - 1}</span>` : ""}</div>` : ""; })()}
       <div class="tags">${mpTags(o)}</div></div>`).join("")
     : '<div class="meta" style="padding:14px">지금 보이는 지도 안에 조건에 맞는 법인이 없습니다. 축소하거나 \'모든 법인\'으로 바꿔 보세요.</div>';
   }
