@@ -163,15 +163,27 @@ def nm(s: str) -> str:
     return re.sub(r"\(주\)|㈜|주식회사|\s+", "", s or "")
 
 
+class KakaoStop(Exception):
+    pass
+
+
 def kakao_keyword(q: str) -> list:
     STATS["kakao_kw_calls"] += 1
+    t0 = time.monotonic()
     try:
         r = C.http_get("https://dapi.kakao.com/v2/local/search/keyword.json", params={"query": q, "size": 15},
                        headers={"Authorization": f"KakaoAK {KAKAO_KEY}"})
+        STATS["kakao_kw_ms"] += int((time.monotonic() - t0) * 1000)
         if r.status_code != 200:
             STATS[f"kakao_kw_http_{r.status_code}"] += 1
+            if STATS["kakao_kw_calls"] <= 3 or STATS[f"kakao_kw_http_{r.status_code}"] in (1, 10, 100):
+                C.log(f"카카오 장소 검색 HTTP {r.status_code}: {r.text[:200]}")
+            if r.status_code in (401, 403, 429):
+                raise KakaoStop(r.status_code)
             return []
         return r.json().get("documents") or []
+    except KakaoStop:
+        raise
     except Exception:  # noqa: BLE001
         STATS["kakao_kw_err"] += 1
         return []
@@ -331,6 +343,11 @@ def main() -> int:
                 offices[cc] = {"v": OFFICE_VER, "t": today.isoformat(),
                                "items": find_offices(v["name"], (g["lat"], g["lng"]) if "lat" in g else None)}
                 n_off += 1
+                if n_off % 200 == 0:
+                    C.log(f"사업장 찾기 {n_off}개사 · 호출 {STATS['kakao_kw_calls']} · 평균 {STATS['kakao_kw_ms'] // max(1, STATS['kakao_kw_calls'])}ms")
+                    C.save_json(OFFICE_PATH, offices)
+        except KakaoStop as ex:
+            C.warn(f"카카오 장소 검색이 거절되어(HTTP {ex}) 사업장 찾기를 멈췄습니다 — 사용량 한도일 수 있어 다음 실행에서 이어서 찾습니다.")
         except C.OutOfTime:
             C.warn("시간 제한으로 사업장 찾기를 중간에 멈췄습니다 — 다음 실행에서 이어서 찾습니다.")
         C.save_json(OFFICE_PATH, offices)
@@ -354,7 +371,7 @@ def main() -> int:
              "miss": sum(1 for v in corps.values() if (cache.get(clean(v.get("addr") or "")) or {}).get("miss")),
              "pending": STATS["pending"], "new": new, "src": "kakao" if KAKAO_KEY else "osm",
              "offices": sum(1 for p in pts.values() if p.get("o")),
-             "sites_by_type": dict(Counter(o["t"] for p in pts.values() for o in p.get("o", []))), "phone_capital": sum(1 for p in pts.values() if p.get("ph"))}
+             "sites_by_type": dict(Counter(o.get("t", "사무소") for p in pts.values() for o in p.get("o", []))), "phone_capital": sum(1 for p in pts.values() if p.get("ph"))}
     data["geo"] = {"corps": pts, "stats": stats}
     C.OUT_PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     C.save_json(C.ROOT / "reports" / "geo_status.json",   # 공개용: 건수만
