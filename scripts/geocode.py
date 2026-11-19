@@ -182,9 +182,9 @@ def main() -> int:
         for cc, v in corps.items():
             a = clean(v.get("addr") or "")
             hit = cache.get(a)
-            # 카카오 키가 생기면, OSM 으로 건물을 못 찾았던(동·구 중심·실패) 주소만 카카오로 다시 찾는다
-            redo = bool(KAKAO_KEY and hit and hit.get("src") != "kakao" and (hit.get("miss") or hit.get("lv", 1) > 1)
-                        and not hit.get("kakao_tried"))
+            # 카카오 키가 생기면 OSM 으로 찾은 주소 전부를 카카오로 다시 찾는다
+            # (OSM 은 건물 단위로 찾았다고 해도 같은 도로의 다른 번지에 찍히는 경우가 있음 — 예: 종로 26 이 2km 동쪽)
+            redo = bool(KAKAO_KEY and hit and hit.get("src") != "kakao" and not hit.get("kakao_tried"))
             if not a or (hit and not redo):
                 continue
             if new >= MAX_NEW:
