@@ -1923,7 +1923,7 @@ const MP_HUBS = [["서울역", 37.5547, 126.9707], ["광화문", 37.5710, 126.97
   ["마곡", 37.5602, 126.8254], ["가산디지털단지", 37.4815, 126.8826], ["구로디지털단지", 37.4852, 126.9015], ["송도", 37.3925, 126.6391]];
 const MP = {map: null, L: null, center: [37.5216, 126.9243], place: "여의도", r: 1000, f: "", markers: {}, layer: null, pin: null, info: null, loading: null};
 const MP_LABEL_ZOOM = 15;        // 이 배율 이상이면 점 위에 법인명 상시 표시
-const MP_MAX_PTS = 600;          // 화면에 한 번에 그리는 점 수 상한 (등급·우선순위 높은 순)
+const MP_MAX_PTS = 400;          // 화면에 한 번에 그리는 점 수 상한 (등급·우선순위 높은 순)
 const KM = (a, b) => {   // 두 점 사이 거리 (m)
   const R = 6371000, r = Math.PI / 180, dLa = (b[0] - a[0]) * r, dLo = (b[1] - a[1]) * r;
   const h = Math.sin(dLa / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLo / 2) ** 2;
@@ -2094,7 +2094,7 @@ async function mpOpen() {
   try { L = await mpLoadLib(); } catch (e) { $("#mp-map").innerHTML = `<div class="meta" style="padding:20px">${esc(e.message)}</div>`; return; }
   $("#mp-map").innerHTML = "";
   MP.L = L;
-  MP.map = L.map("mp-map", {zoomControl: innerWidth > 900}).setView(MP.center, 15);   // 모바일은 두 손가락 확대·축소 (버튼이 팝업을 가림)
+  MP.map = L.map("mp-map", {zoomControl: innerWidth > 900, preferCanvas: true}).setView(MP.center, 15);   // 점은 캔버스로 (수백 개여도 가볍게)   // 모바일은 두 손가락 확대·축소 (버튼이 팝업을 가림)
   mpTiles(0);
   // 지도 칸 크기가 바뀌면(탭 전환·창 크기·글꼴 로딩) 다시 맞춤 — 안 하면 지도 일부나 전체가 흰 화면으로 남음
   if (window.ResizeObserver) new ResizeObserver(() => MP.map && MP.map.invalidateSize()).observe($("#mp-map"));
@@ -2102,7 +2102,9 @@ async function mpOpen() {
   MP.layer = L.layerGroup().addTo(MP.map);
   MP.map.on("click", e => mpGo([e.latlng.lat, e.latlng.lng], "지도에서 고른 곳", false));
   // 확대·축소·이동하면 보이는 영역 기준으로 다시 그림 — 단, 팝업이 열리며 지도가 자동으로 밀린 경우는 제외
-  MP.map.on("moveend", () => { if (Date.now() - (MP.popT || 0) > 700) mpRender(); });
+  // 연속으로 움직이는 동안엔 다시 그리지 않고, 멈춘 뒤 0.15초에 한 번만
+  MP.map.on("moveend", () => { clearTimeout(MP.rt); if (Date.now() - (MP.popT || 0) > 700) MP.rt = setTimeout(mpRender, 150); });
+  MP.map.on("movestart zoomstart", () => clearTimeout(MP.rt));
   MP.map.on("popupopen", e => {
     MP.popT = Date.now();
     // 모바일: 위에 고정된 머리글에 팝업 윗부분(닫기 ×)이 가리면 화면을 내려서 보이게
@@ -2160,10 +2162,9 @@ function mpRender() {
   $("#mp-place").textContent = MP.place;
   if (MP.hold) { MP.hold = false; } else {   // 목록에서 법인을 눌러 지도가 움직인 경우엔 목록을 그대로 둔다
   $("#mp-count").textContent = `지도 화면 안 ${near.length.toLocaleString()}개사 (A ${gc.A} · B ${gc.B}${gc.C ? " · C " + gc.C : ""})${MP.f ? ` · 전체 ${vis.length.toLocaleString()}개사 중` : ""}`;
-  $("#mp-list").innerHTML = near.length ? near.slice(0, 300).map(({o, d}) => `<div class="mp-it" data-cc="${o.k}">
+  $("#mp-list").innerHTML = near.length ? near.slice(0, 150).map(({o, d}) => `<div class="mp-it" data-cc="${o.k}">
       <div class="t"><span><span class="mp-dot" style="background:${mpColor(o)}"></span><b>${esc(o.p.n)}</b> <span class="meta">${esc(o.co?.market_label || "")}</span></span><span class="meta">${MP.place} ${distTxt(d)}</span></div>
-      ${(() => { const P = mpPoints(o); return P.length ? `<div class="mp-li-pt ${P[0].hot ? "hot" : ""}"><b>${esc(P[0].k)}</b> ${esc(P[0].fact)}${P.length > 1 ? ` <span class="meta">+${P.length - 1}</span>` : ""}</div>` : ""; })()}
-      <div class="tags">${mpTags(o)}</div></div>`).join("")
+      ${o._li ??= (() => { const P = mpPoints(o); return (P.length ? `<div class="mp-li-pt ${P[0].hot ? "hot" : ""}"><b>${esc(P[0].k)}</b> ${esc(P[0].fact)}${P.length > 1 ? ` <span class="meta">+${P.length - 1}</span>` : ""}</div>` : "") + `<div class="tags">${mpTags(o)}</div>`; })()}</div>`).join("")
     : '<div class="meta" style="padding:14px">지금 보이는 지도 안에 조건에 맞는 법인이 없습니다. 축소하거나 \'모든 법인\'으로 바꿔 보세요.</div>';
   }
   if (!MP.map) return;
