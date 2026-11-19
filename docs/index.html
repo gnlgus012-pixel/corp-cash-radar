@@ -623,7 +623,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <div class="mp-hubs" id="mp-hubs"></div>
     <div id="mp-results" class="mp-results"></div>
     <div class="meta mp-legend"><span class="mp-g gA">A</span> 지금 갈 이유 있음 (담보 90일 내 만기 · 저축은행·캐피탈 담보 · 90일 내 락업 해제 · 여유자금 70점↑) &nbsp; <span class="mp-g gB">B</span> 대주주 이슈 또는 여유자금 60점↑ &nbsp; <span class="mp-g gC">C</span> 그 외
-      <br>점 색: <span class="mp-watch-lg" hidden><span class="mp-dot" style="background:#7c3aed"></span>관심법인 &nbsp; </span><span class="mp-dot" style="background:#e8590c"></span>대주주 이슈 &nbsp; <span class="mp-dot" style="background:#1f6feb"></span>여유자금 60점↑ &nbsp; <span class="mp-dot" style="background:#8a94a6"></span>기타 · 흐린 점 = 위치 대략 · 지도를 옮기거나 확대·축소하면 그 화면 안 법인으로 바뀝니다 · 지도를 누르면 그곳이 거리 기준점</div>
+      <br>점 색: <span class="mp-watch-lg" hidden><span class="mp-dot" style="background:#7c3aed"></span>관심법인 &nbsp; </span><span class="mp-dot" style="background:#e8590c"></span>대주주 이슈 &nbsp; <span class="mp-dot" style="background:#1f6feb"></span>여유자금 60점↑ &nbsp; <span class="mp-dot" style="background:#8a94a6"></span>기타 · <span class="mp-dot" style="background:#e8590c;box-shadow:0 0 0 2px #6b3fd4"></span>보라 테두리 = 수도권 사무소 (DART 본점은 지방) · 흐린 점 = 위치 대략 · 지도를 옮기거나 확대·축소하면 그 화면 안 법인으로 바뀝니다 · 지도를 누르면 그곳이 거리 기준점</div>
     <div class="mp-wrap">
       <div id="mp-map" class="card"><div class="meta" style="padding:20px">지도를 불러오는 중…</div></div>
       <div class="mp-side card"><div class="mp-head"><b id="mp-place">여의도</b> <span class="meta" id="mp-count"></span></div><div id="mp-list"></div></div>
@@ -1920,7 +1920,7 @@ function mpInfo() {   // 법인별 섭외 정보 (등급·대주주 이슈) — 
   if (MP.info) return MP.info;
   const I = {}, td = todayIso(), R = RAW || D;      // 지도는 담당 지역 설정과 상관없이 전국
   const cos = {}; (R.companies || []).forEach(c => cos[c.corp_code] = c);
-  Object.entries(R.geo?.corps || {}).forEach(([cc, p]) => { I[cc] = {cc, p, co: cos[cc], pl: null, lk: null, ow: 0}; });
+  Object.entries(R.geo?.corps || {}).forEach(([cc, p]) => { I[cc] = {cc, k: cc, p, co: cos[cc], pl: null, lk: null, ow: 0}; });
   const d90 = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10);
   (R.pledge?.items || []).forEach(i => { const o = I[i.corp_code]; if (!o || !i.is_person) return;   // 대주주 개인 담보만
     const x = o.pl ??= {n: 0, v: 0, ppl: new Set(), kis: 0, alt: 0, end: null, soon: 0, rows: []};
@@ -1946,6 +1946,10 @@ function mpInfo() {   // 법인별 섭외 정보 (등급·대주주 이슈) — 
     o.grade = why.length ? "A" : (o.owner || (o.score || 0) >= 60 || o.co?.watch) ? "B" : "C";
     o.rank = ({A: 2000, B: 1000, C: 0})[o.grade] + (o.co?.watch ? 500 : 0) + why.length * 100 + (o.pl ? 60 : 0) + (o.lk ? 50 : 0) + (o.ow ? 40 : 0) + (o.score || 0);
   });
+  // 수도권 사무소: 본점(등기)이 지방인데 서울·경기·인천에 회사 장소가 따로 있는 법인 → 그 자리에도 점을 하나 더
+  Object.values(I).filter(o => o.p.o?.length && !o.off).forEach(o => o.p.o.forEach((f, k) => {
+    I[o.cc + "@" + k] = {...o, k: o.cc + "@" + k, off: f, home: o.p, p: {...o.p, lat: f.lat, lng: f.lng, a: f.a, lv: 1}};
+  }));
   return MP.info = I;
 }
 function mpPass(o) {
@@ -1976,6 +1980,9 @@ function mpTags(o) {
   if (o.pl?.alt) t.push(`<span class="tag out" title="저축은행·캐피탈 담보 = 금리가 높아 증권사 담보대출로 대환 제안 여지">저축은행·캐피탈 ${o.pl.alt}건</span>`);
   if (o.lk) t.push(`<span class="tag out" title="상장 때 묶인 대주주 주식이 풀리는 날">락업 해제 ${ymdDot(o.lk.date)}${o.lk.amt ? " · " + eok(o.lk.amt) : ""}</span>`);
   if (o.ow) t.push(`<span class="tag gray" title="최근 90일 대주주 지분 매각·증여·담보 등 공시">대주주 공시 ${o.ow}건 (90일)</span>`);
+  if (o.off) t.push(`<span class="tag k-mezz" title="DART 본점(등기)은 ${esc(o.home.a)} — 카카오 장소 '${esc(o.off.pn)}'(${esc(o.off.cat)})">수도권 사무소 · 본점 ${esc(o.home.a.split(" ").slice(0, 2).join(" "))}</span>`);
+  else if (o.p.o?.length) t.push(`<span class="tag k-mezz" title="${esc(o.p.o.map(f => f.pn + " " + f.a).join(" / "))}">수도권 사무소 ${o.p.o.length}곳 있음</span>`);
+  else if (o.p.ph) t.push(`<span class="tag gray" title="본점은 지방이지만 대표·공시담당 전화가 ${o.p.ph} 번호 — 수도권 사무소가 있을 수 있음">전화 ${o.p.ph} 번호</span>`);
   if (o.p.lv > 1) t.push(`<span class="tag gray" title="주소로 건물을 못 찾아 ${o.p.lv === 2 ? "동·읍·면" : "시군구"} 중심에 표시">위치 대략</span>`);
   return t.join("");
 }
@@ -1991,12 +1998,12 @@ function plRowsHtml(rows, max = 6) {   // 주식담보 계약 요약표 (지도 
 function mpPopup(o) {
   const c = o.co, i = c?.info || {};
   return `<div class="mp-pop"><b>${esc(o.p.n)}</b> <span class="meta">${esc(c?.market_label || "")}</span>
-    <div class="row meta">${esc(o.p.a)}</div>
+    <div class="row meta">${o.off ? `<b>${esc(o.off.pn)}</b> ${esc(o.p.a)}<br>본점(DART): ${esc(o.home.a)}` : esc(o.p.a)}${!o.off && o.p.o?.length ? `<br>수도권 사무소: ${o.p.o.map(f => esc(f.pn) + " (" + esc(f.a) + ")").join(", ")}` : ""}</div>
     ${i.ceo || i.phone ? `<div class="row">${i.ceo ? "대표 " + esc(i.ceo) : ""}${i.phone ? " · " + esc(i.phone) : ""}</div>` : ""}
     ${o.why.length ? `<div class="row mp-why"><b>지금 갈 이유</b> ${o.why.map(esc).join(" · ")}</div>` : ""}
     <div class="row" style="display:flex;flex-wrap:wrap;gap:4px">${mpTags(o)}</div>
     ${o.pl ? `<div class="row"><b style="font-size:13px">대주주 주식담보</b>${plRowsHtml(o.pl.rows, 4)}</div>` : ""}
-    <div class="row">${c ? `<a href="#" data-co="${o.cc}">상세 보기</a> · ` : ""}<a href="https://dart.fss.or.kr/dsab007/main.do?option=corp&textCrpNm=${encodeURIComponent(o.p.n)}" target="_blank" rel="noopener">DART</a>
+    <div class="row">${c ? `<a href="#" data-co="${o.cc.split("@")[0]}">상세 보기</a> · ` : ""}<a href="https://dart.fss.or.kr/dsab007/main.do?option=corp&textCrpNm=${encodeURIComponent(o.p.n)}" target="_blank" rel="noopener">DART</a>
       · <a href="https://map.kakao.com/link/search/${encodeURIComponent(mpAddr(o.p.a))}" target="_blank" rel="noopener">카카오맵</a>
       · <a href="https://map.naver.com/p/search/${encodeURIComponent(mpAddr(o.p.a))}" target="_blank" rel="noopener">네이버지도</a></div></div>`;
 }
@@ -2072,7 +2079,7 @@ function mpRender() {
   $("#mp-place").textContent = MP.place;
   if (MP.hold) { MP.hold = false; } else {   // 목록에서 법인을 눌러 지도가 움직인 경우엔 목록을 그대로 둔다
   $("#mp-count").textContent = `지도 화면 안 ${near.length.toLocaleString()}개사 (A ${gc.A} · B ${gc.B}${gc.C ? " · C " + gc.C : ""})${MP.f ? ` · 전체 ${vis.length.toLocaleString()}개사 중` : ""}`;
-  $("#mp-list").innerHTML = near.length ? near.slice(0, 300).map(({o, d}) => `<div class="mp-it" data-cc="${o.cc}">
+  $("#mp-list").innerHTML = near.length ? near.slice(0, 300).map(({o, d}) => `<div class="mp-it" data-cc="${o.k}">
       <div class="t"><span><span class="mp-dot" style="background:${mpColor(o)}"></span><b>${esc(o.p.n)}</b> <span class="meta">${esc(o.co?.market_label || "")}</span></span><span class="meta">${MP.place} ${distTxt(d)}</span></div>
       ${o.why.length ? `<div class="mp-why">${o.why.map(esc).join(" · ")}</div>` : ""}
       <div class="tags">${mpTags(o)}</div></div>`).join("")
@@ -2085,22 +2092,22 @@ function mpRender() {
   const draw = near.slice(0, MP_MAX_PTS);
   // 이름표는 확대했을 때(또는 점이 적을 때) 우선순위 높은 25곳만 상시 표시 — 나머지는 마우스를 올리면
   const labelOn = z >= MP_LABEL_ZOOM || draw.length <= 40;
-  const top = new Set(labelOn ? draw.filter(x => x.o.grade !== "C").slice(0, 25).map(x => x.o.cc) : []);
-  const want = new Set(draw.map(x => x.o.cc));
+  const top = new Set(labelOn ? draw.filter(x => x.o.grade !== "C").slice(0, 25).map(x => x.o.k) : []);
+  const want = new Set(draw.map(x => x.o.k));
   // 화면에서 빠진 점만 지우고 새로 들어온 점만 추가 (열린 팝업이 닫히지 않게)
   Object.keys(MP.markers).forEach(cc => { if (!want.has(cc) || MP.markers[cc]._lab !== top.has(cc) || MP.markers[cc]._f !== MP.f) { MP.layer.removeLayer(MP.markers[cc]); delete MP.markers[cc]; } });
   draw.slice().reverse().forEach(({o}) => {
-    if (MP.markers[o.cc]) return;
+    if (MP.markers[o.k]) return;
     const big = o.grade !== "C";
-    const m = L.circleMarker([o.p.lat, o.p.lng], {radius: big ? 8 : 6, color: "#fff", weight: 1.5,
+    const m = L.circleMarker([o.p.lat, o.p.lng], {radius: big ? 8 : 6, color: o.off ? "#6b3fd4" : "#fff", weight: o.off ? 3 : 1.5,
       fillColor: mpColor(o), fillOpacity: o.p.lv > 1 ? 0.55 : 0.9, dashArray: o.p.lv > 1 ? "2 2" : null}).addTo(MP.layer);
     m.bindPopup(() => mpPopup(o), {maxWidth: 360, autoPanPadding: [20, 20]});
     const sh = mpShort(o);
-    const lab = `<span class="mp-g g${o.grade}">${o.grade}</span> <b>${esc(o.p.n)}</b>${sh ? ` <span class="mp-s">${esc(sh)}</span>` : ""}`;
-    m.bindTooltip(lab, {permanent: top.has(o.cc), direction: "top", offset: [0, -7], className: "mp-lab"});
-    m._lab = top.has(o.cc); m._f = MP.f;
-    m.on("click", () => $$(".mp-it").forEach(x => x.classList.toggle("on", x.dataset.cc === o.cc)));
-    MP.markers[o.cc] = m;
+    const lab = `<span class="mp-g g${o.grade}">${o.grade}</span> <b>${esc(o.p.n)}</b>${o.off ? ' <span class="mp-s">(사무소)</span>' : ""}${sh ? ` <span class="mp-s">${esc(sh)}</span>` : ""}`;
+    m.bindTooltip(lab, {permanent: top.has(o.k), direction: "top", offset: [0, -7], className: "mp-lab"});
+    m._lab = top.has(o.k); m._f = MP.f;
+    m.on("click", () => $$(".mp-it").forEach(x => x.classList.toggle("on", x.dataset.cc === o.k)));
+    MP.markers[o.k] = m;
   });
   $("#mp-hint").textContent = near.length > MP_MAX_PTS ? `점이 많아 등급 높은 ${MP_MAX_PTS}개만 찍었습니다. 확대하면 나머지도 보입니다.`
     : !labelOn ? "확대하면 점 위에 법인명이 표시됩니다 (점에 마우스를 올려도 보입니다)." : "";
@@ -2137,7 +2144,7 @@ async function mpSearch() {
     const c = [+b.dataset.lat, +b.dataset.lng];
     mpGo(c, b.dataset.n);
     const hit = Object.values(I).find(o => o.p.n === b.dataset.n && o.p.lat === c[0]);
-    if (hit) setTimeout(() => mpFocus(hit.cc), 400);
+    if (hit) setTimeout(() => mpFocus(hit.k), 400);
   });
   if (cos.length + places.length === 1) $("#mp-results button").click();
 }

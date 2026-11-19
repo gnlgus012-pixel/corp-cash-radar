@@ -149,11 +149,13 @@ def inside_korea(lat, lng) -> bool:
 
 # ───────── 수도권 사무소: 본점(등기)이 지방인데 실제 본사·사무소가 서울·경기에 있는 법인 ─────────
 OFFICE_PATH = C.CACHE_DIR / "offices.json"
-OFFICE_VER = 1
+OFFICE_VER = 2
 OFFICE_TTL_DAYS = 60
 CAPITAL_RX = re.compile(r"^(서울|경기|인천)")
 OFFICE_CAT_OK = re.compile(r"회사|기업|사무실|연구소|건설업|제조업|제약|IT|금융|공공기관")
-OFFICE_NAME_BAD = re.compile(r"대리점|매장|판매점|직영점|서비스센터|물류센터|창고|공장|주유소|충전소|ATM|지점$|영업소|출장소|교육원|연수원|기숙사|어린이집")
+# 사무소로 볼 수 있는 이름 — 이게 없으면 서울 주소의 '법인명 그대로' 장소만 인정 (경기·인천의 같은 이름 장소는 공장·동명 회사가 많음)
+OFFICE_NAME_OK = re.compile(r"본사|사옥|사무소|사무실|지사|오피스|본부|R&D|연구소|연구센터|캠퍼스|비즈니스\s*센터|타워|센터$")
+OFFICE_NAME_BAD = re.compile(r"CS\s*센터|고객센터|A/S|AS센터|파트$|정비|지점|대리점|매장|판매점|직영점|서비스센터|물류센터|창고|공장|주유소|충전소|ATM|지점$|영업소|출장소|교육원|연수원|기숙사|어린이집")
 
 
 def nm(s: str) -> str:
@@ -185,6 +187,8 @@ def find_offices(name: str, home: tuple | None) -> list:
             continue
         addr = d.get("road_address_name") or d.get("address_name") or ""
         if not CAPITAL_RX.match(addr) or OFFICE_NAME_BAD.search(pn) or not OFFICE_CAT_OK.search(d.get("category_name") or ""):
+            continue
+        if not OFFICE_NAME_OK.search(pn[len(name):]) and not addr.startswith("서울"):
             continue
         lat, lng = round(float(d["y"]), 6), round(float(d["x"]), 6)
         if home and _km(home, (lat, lng)) < 5:
