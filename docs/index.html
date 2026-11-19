@@ -629,6 +629,7 @@ tbody tr.click:hover{background:var(--surface-2)}
       <div class="mp-side card"><div class="mp-head"><b id="mp-place">여의도</b> <span class="meta" id="mp-count"></span></div><div id="mp-list"></div></div>
     </div>
     <p class="meta" id="mp-hint" style="margin-top:8px;color:var(--accent)"></p>
+    <p class="meta" id="mp-tilemsg" style="margin-top:4px;color:#d6336c"></p>
     <p class="meta" id="mp-foot" style="margin-top:4px"></p>
   </section>
 
@@ -2046,13 +2047,16 @@ function initMap() {
 function alertMsg(t) { $("#mp-results").innerHTML = `<span class="meta">${esc(t)}</span>`; $("#mp-results").classList.add("on"); }
 async function mpOpen() {
   if (!(RAW || D).geo?.corps) { $("#mp-map").innerHTML = '<div class="meta" style="padding:20px">지도 위치 자료가 아직 없습니다. 다음 갱신부터 표시됩니다.</div>'; return; }
-  if (MP.map) { setTimeout(() => MP.map.invalidateSize(), 50); return; }
+  if (MP.map) { setTimeout(() => { MP.map.invalidateSize(); mpRender(); }, 50); return; }
   let L;
   try { L = await mpLoadLib(); } catch (e) { $("#mp-map").innerHTML = `<div class="meta" style="padding:20px">${esc(e.message)}</div>`; return; }
   $("#mp-map").innerHTML = "";
   MP.L = L;
   MP.map = L.map("mp-map", {zoomControl: true}).setView(MP.center, 15);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(MP.map);
+  mpTiles(0);
+  // 지도 칸 크기가 바뀌면(탭 전환·창 크기·글꼴 로딩) 다시 맞춤 — 안 하면 지도 일부나 전체가 흰 화면으로 남음
+  if (window.ResizeObserver) new ResizeObserver(() => MP.map && MP.map.invalidateSize()).observe($("#mp-map"));
+  setTimeout(() => MP.map.invalidateSize(), 300);
   MP.layer = L.layerGroup().addTo(MP.map);
   MP.map.on("click", e => mpGo([e.latlng.lat, e.latlng.lng], "지도에서 고른 곳", false));
   // 확대·축소·이동하면 보이는 영역 기준으로 다시 그림 — 단, 팝업이 열리며 지도가 자동으로 밀린 경우는 제외
@@ -2060,6 +2064,25 @@ async function mpOpen() {
   MP.map.on("popupopen", () => { MP.popT = Date.now(); });
   MP.map.on("popupopen", e => { const a = e.popup.getElement()?.querySelector("[data-co]"); if (a) a.onclick = ev => { ev.preventDefault(); const cc = a.dataset.co; CO_BY_CODE[cc] ??= mpInfo()[cc]?.co; openCompany(cc); }; });
   mpFit();
+}
+// 배경 지도: OpenStreetMap → 안 뜨면(회사망 차단·서버 거절) CARTO 로 자동 전환
+const MP_TILES = [
+  ["https://tile.openstreetmap.org/{z}/{x}/{y}.png", "© OpenStreetMap", {}],
+  ["https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", "© OpenStreetMap © CARTO", {subdomains: "abcd"}],
+];
+function mpTiles(i) {
+  if (MP.tile) MP.map.removeLayer(MP.tile);
+  const [url, attr, opt] = MP_TILES[i];
+  let ok = 0, bad = 0;
+  MP.tile = MP.L.tileLayer(url, {maxZoom: 19, attribution: attr, ...opt}).addTo(MP.map);
+  MP.tile.on("tileload", () => { ok++; });
+  MP.tile.on("tileerror", () => {
+    bad++;
+    if (!ok && bad >= 4) {
+      if (i + 1 < MP_TILES.length) mpTiles(i + 1);
+      else $("#mp-tilemsg").textContent = "배경 지도를 불러오지 못했습니다 (회사망에서 지도 서버가 막혀 있을 수 있습니다). 점과 목록은 정상입니다.";
+    }
+  });
 }
 function mpFit() {   // 기준점 + 반경이 화면에 꽉 차게
   if (!MP.map) return mpRender();
