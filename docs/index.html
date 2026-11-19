@@ -304,6 +304,29 @@ tbody tr.click:hover{background:var(--surface-2)}
 .notice .ft button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 .gate .gate-install{margin-top:10px;background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
 .gate .err{color:var(--out);font-size:13px;min-height:18px;margin-top:10px}
+.mp-bar input#mp-q{min-width:240px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 12px;cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.mp-hubs{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 12px}
+.mp-hubs button{border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:3px 10px;font-size:12.5px;cursor:pointer;color:var(--ink-2)}
+.mp-hubs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.mp-results{display:none;margin:-4px 0 12px}.mp-results.on{display:flex;flex-wrap:wrap;gap:6px}
+.mp-results button{border:1px dashed var(--accent);background:var(--surface);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12.5px;text-align:left}
+.mp-wrap{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:14px}
+#mp-map{height:620px;padding:0;overflow:hidden;z-index:0}
+.mp-side{height:620px;display:flex;flex-direction:column;padding:0}
+.mp-head{padding:12px 14px;border-bottom:1px solid var(--line)}
+#mp-list{overflow-y:auto;flex:1}
+.mp-it{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+.mp-it:hover,.mp-it.on{background:var(--surface-2)}
+.mp-it .t{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.mp-it .tags{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px}
+.mp-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.mp-pop{font-size:13px;line-height:1.5;min-width:220px}
+.mp-pop b{font-size:14px}
+.mp-pop .row{margin-top:3px}
+.leaflet-container{font-family:inherit;background:var(--surface-2)}
+@media (max-width:900px){.mp-wrap{grid-template-columns:1fr}#mp-map{height:420px}.mp-side{height:auto;max-height:560px}.mp-bar input#mp-q{min-width:0;flex:1}}
 </style>
 </head>
 <body>
@@ -345,6 +368,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <button data-tab="owner">대주주(개인)</button>
     <button data-tab="cal">만기 캘린더</button>
     <button data-tab="screen">여유자금 법인</button>
+    <button data-tab="map">섭외 지도</button>
     <button data-tab="issue">주요 이슈</button>
   </nav>
 </header>
@@ -561,6 +585,28 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="disclaimer">재무는 DART 최근 정기보고서 기준이며 차입금은 계정명 기반 근사치입니다. 상세 화면의 기준 보고서를 함께 확인하세요.</p>
   </section>
 
+  <!-- 섭외 지도 -->
+  <section class="tab" id="t-map">
+    <h2>섭외 지도</h2>
+    <p class="sub">가는 곳을 고르면 그 근처 본사 법인을 섭외 우선순위대로 보여 줍니다. 여유자금 점수, 대주주 이슈(주식담보·락업 해제·자금 공시), 관심법인을 함께 봅니다.
+      <br><span class="meta">위치 = DART 기업개황의 본점 주소. 공장·지점이 아니라 본사 기준입니다. 주소로 정확히 못 찾은 법인은 동·구 중심에 '대략'으로 찍힙니다.</span></p>
+    <div class="filters mp-bar">
+      <input type="text" id="mp-q" placeholder="장소·역 이름 또는 법인명 (예: 서울역)">
+      <button class="btn" id="mp-go">찾기</button>
+      <button class="btn" id="mp-me" title="브라우저 위치 권한 필요">내 위치</button>
+      <div class="seg-btns" id="mp-r"><button data-v="500">500m</button><button data-v="1000" class="on">1km</button><button data-v="2000">2km</button><button data-v="5000">5km</button></div>
+      <select id="mp-f"><option value="">모든 법인</option><option value="pri" selected>섭외 우선 (점수 60↑·대주주 이슈·관심)</option><option value="owner">대주주 이슈 있는 법인</option><option value="cash">여유자금 점수 60↑</option><option value="kis">한국투자증권 담보 법인</option></select>
+    </div>
+    <div class="mp-hubs" id="mp-hubs"></div>
+    <div id="mp-results" class="mp-results"></div>
+    <div class="meta" style="margin:-4px 0 10px"><span class="mp-dot" style="background:#7c3aed"></span>관심법인 &nbsp; <span class="mp-dot" style="background:#e8590c"></span>대주주 이슈 (주식담보·6개월 내 락업 해제·90일 내 자금 공시) &nbsp; <span class="mp-dot" style="background:#1f6feb"></span>여유자금 60점↑ &nbsp; <span class="mp-dot" style="background:#8a94a6"></span>기타 &nbsp; · 흐린 점 = 위치 대략 · 지도를 누르면 그곳이 기준점</div>
+    <div class="mp-wrap">
+      <div id="mp-map" class="card"><div class="meta" style="padding:20px">지도를 불러오는 중…</div></div>
+      <div class="mp-side card"><div class="mp-head"><b id="mp-place">서울역</b> <span class="meta" id="mp-count"></span></div><div id="mp-list"></div></div>
+    </div>
+    <p class="meta" id="mp-foot" style="margin-top:8px"></p>
+  </section>
+
   <!-- 주요 이슈 -->
   <section class="tab" id="t-issue">
     <h2>주요 이슈</h2>
@@ -645,7 +691,7 @@ const segTag = s => `<span class="tag seg-${s}">${SEG_LABEL[s] || s}</span>`;
 const typeTag = t => `<span class="tag ${t === "유입" ? "in" : "out"}">${esc(t)}</span>`;
 const scoreCell = s => `<span class="score">${s.toFixed(0)}<span class="bar"><i style="width:${Math.min(s,100)}%"></i></span></span>`;
 
-let D, EV_BY_ID = {}, CO_BY_CODE = {};
+let D, RAW = null, EV_BY_ID = {}, CO_BY_CODE = {};
 const st = {
   ev: {period: 30, type: "", cat: "", mkt: "", q: "", sort: "date", dir: -1, basis: "disc", srange: "n30", skind: ""},
   sc: {mkt: "", seg: "", min: 0, fin: false, watch: false, q: "", sort: "score", dir: -1},
@@ -899,12 +945,14 @@ function applyRegion(data) {
   if (data.holders) out.holders = {...data.holders, items: data.holders.items.filter(i => ok(i.corp_code))};
   if (data.lockup) out.lockup = {...data.lockup, items: data.lockup.items.filter(i => ok(i.corp_code))};
   if (data.calendar) out.calendar = {...data.calendar, items: data.calendar.items.filter(i => ok(i.corp_code))};
+  if (data.pledge) out.pledge = {...data.pledge, items: data.pledge.items.filter(i => ok(i.corp_code))};
   $("#regionBar").classList.add("on");
   $("#rg-note").textContent = `${R.sgg ? R.sido + " " + R.sgg : R.sido} 법인 ${out.companies.length.toLocaleString()}개사만 표시 · 비상장 등 주소 미확보 법인은 제외`;
   return out;
 }
 
 function init(data) {
+  RAW = data;
   D = applyRegion(data);
   D.events.forEach(e => EV_BY_ID[e.rcept_no] = e);
   D.companies.forEach(c => CO_BY_CODE[c.corp_code] = c);
@@ -917,7 +965,7 @@ function init(data) {
   $("#banners").innerHTML = b;
 
   (D.calendar?.items || []).forEach(i => { if (i.kind === "보호예수 해제") i.kind = "락업 해제"; });   // 예전 데이터 이름
-  renderBrief(); initFlow(); initOwner(); initLock(); initPledge(); initCal(); initScreen(); renderProducts(); renderRates(); renderIssues(); initSearch();
+  renderBrief(); initFlow(); initOwner(); initLock(); initPledge(); initCal(); initScreen(); initMap(); renderProducts(); renderRates(); renderIssues(); initSearch();
   $$("#nav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.tab));
   $$(".subnav button").forEach(btn => btn.onclick = () => showTab(btn.dataset.sub));
   $("#t-rate").addEventListener("toggle", e => { if (e.target.open) drawRateCharts(); });
@@ -939,6 +987,7 @@ function showTab(t) {
   try { if (window.gtag) gtag("event", "page_view", {page_title: (t === "lock" ? "대주주 락업해제" : t === "pledge" ? "대주주 주식담보" : $(`#nav button[data-tab="${t}"]`)?.textContent || t), page_location: location.href}); } catch(e) {}
   if (t === "flow") drawFlowChart();
   if (t === "cal") drawCalChart();
+  if (t === "map") mpOpen();
   window.scrollTo({top: 0});
 }
 function openRates() {
@@ -1825,6 +1874,179 @@ function renderIssues() {
 }
 
 /* ── 검색 ── */
+/* ── 섭외 지도 ── */
+const MP_HUBS = [["서울역", 37.5547, 126.9707], ["광화문", 37.5710, 126.9768], ["을지로입구", 37.5660, 126.9822], ["여의도", 37.5216, 126.9243],
+  ["강남역", 37.4979, 127.0276], ["삼성역", 37.5089, 127.0631], ["판교", 37.3948, 127.1112], ["성수", 37.5445, 127.0557],
+  ["마곡", 37.5602, 126.8254], ["가산디지털단지", 37.4815, 126.8826], ["구로디지털단지", 37.4852, 126.9015], ["송도", 37.3925, 126.6391]];
+const MP = {map: null, L: null, center: [37.5547, 126.9707], place: "서울역", r: 1000, f: "pri", markers: {}, layer: null, ring: null, pin: null, info: null, loading: null};
+const KM = (a, b) => {   // 두 점 사이 거리 (m)
+  const R = 6371000, r = Math.PI / 180, dLa = (b[0] - a[0]) * r, dLo = (b[1] - a[1]) * r;
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+const distTxt = m => m < 1000 ? `${Math.round(m / 10) * 10}m` : `${(m / 1000).toFixed(1)}km`;
+function mpInfo() {   // 법인별 섭외 정보 (점수·대주주 이슈) — 한 번만 계산
+  if (MP.info) return MP.info;
+  const I = {}, td = todayIso(), R = RAW || D;      // 지도는 담당 지역 설정과 상관없이 전국
+  const cos = {}; (R.companies || []).forEach(c => cos[c.corp_code] = c);
+  const pts = R.geo?.corps || {};
+  Object.entries(pts).forEach(([cc, p]) => { I[cc] = {cc, p, co: cos[cc], pl: null, lk: null, ow: 0}; });
+  (R.pledge?.items || []).forEach(i => { const o = I[i.corp_code]; if (!o) return;
+    const x = o.pl ??= {n: 0, v: 0, ppl: new Set(), kis: false, end: null};
+    x.n++; x.v += i.value || 0; if (i.is_person) x.ppl.add(i.person); if (KIS_RX.test(i.lender)) x.kis = true;
+    if (i.end && i.end >= td && (!x.end || i.end < x.end)) x.end = i.end; });
+  const lim = new Date(Date.now() + 180 * 864e5).toISOString().slice(0, 10);
+  (R.lockup?.items || []).forEach(i => { const o = I[i.corp_code]; if (!o || !i.date || i.date < td || i.date > lim) return;
+    if (!o.lk || i.date < o.lk.date) o.lk = {date: i.date, n: 0, amt: 0}; });
+  (R.lockup?.items || []).forEach(i => { const o = I[i.corp_code]; if (o?.lk && i.date >= td && i.date <= lim) { o.lk.n++; o.lk.amt += i.amount || 0; } });
+  const since = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10).replaceAll("-", "");
+  (R.holders?.items || []).forEach(i => { const o = I[i.corp_code]; if (o && (i.date || "") >= since && !i.cancelled) o.ow++; });
+  Object.values(I).forEach(o => {
+    o.score = o.co?.score ?? null;
+    o.owner = !!(o.pl?.ppl.size || o.lk || o.ow);
+    // 우선순위: 관심법인 > 대주주 이슈 > 여유자금 점수
+    o.rank = (o.co?.watch ? 1000 : 0) + (o.pl?.ppl.size ? 120 : 0) + (o.lk ? 100 : 0) + (o.ow ? 80 : 0) + (o.score || 0);
+  });
+  return MP.info = I;
+}
+function mpPass(o) {
+  const f = MP.f;
+  if (!f) return true;
+  if (f === "owner") return o.owner;
+  if (f === "cash") return (o.score || 0) >= 60;
+  if (f === "kis") return !!o.pl?.kis;
+  return o.owner || (o.score || 0) >= 60 || !!o.co?.watch;   // pri
+}
+const mpColor = o => o.co?.watch ? "#7c3aed" : o.owner ? "#e8590c" : (o.score || 0) >= 60 ? "#1f6feb" : "#8a94a6";
+function mpTags(o) {
+  const t = [];
+  if (o.co?.watch) t.push('<span class="tag gray">관심법인</span>');
+  if (o.score != null) t.push(`<span class="tag ${o.score >= 60 ? "in" : "gray"}">여유자금 ${o.score.toFixed(0)}점</span>`);
+  if (o.co) t.push(segTag(o.co.segment));
+  if (o.pl?.ppl.size) t.push(`<span class="tag k-pledge">주식담보 ${o.pl.ppl.size}명 ${o.pl.v ? eok(o.pl.v) : ""}${o.pl.end ? " · 만기 " + o.pl.end.slice(2).replaceAll("-", ".") : ""}</span>`);
+  if (o.pl?.kis) t.push('<span class="tag k-uw-kis">한투 담보</span>');
+  if (o.lk) t.push(`<span class="tag out">락업 해제 ${o.lk.date.slice(2).replaceAll("-", ".")}${o.lk.amt ? " · " + eok(o.lk.amt) : ""}</span>`);
+  if (o.ow) t.push(`<span class="tag gray">대주주 공시 ${o.ow}건 (90일)</span>`);
+  if (o.p.lv > 1) t.push(`<span class="tag gray" title="주소로 건물을 못 찾아 ${o.p.lv === 2 ? "동·읍·면" : "시군구"} 중심에 표시">위치 대략</span>`);
+  return t.join("");
+}
+function mpPopup(o) {
+  const c = o.co, i = c?.info || {};
+  return `<div class="mp-pop"><b>${esc(o.p.n)}</b> <span class="meta">${esc(c?.market_label || "")}</span>
+    <div class="row meta">${esc(o.p.a)}</div>
+    ${i.ceo || i.phone ? `<div class="row">${i.ceo ? "대표 " + esc(i.ceo) : ""}${i.phone ? " · " + esc(i.phone) : ""}</div>` : ""}
+    <div class="row tags" style="display:flex;flex-wrap:wrap;gap:4px">${mpTags(o)}</div>
+    <div class="row">${c ? `<a href="#" data-co="${o.cc}">상세 보기</a> · ` : ""}<a href="https://dart.fss.or.kr/dsab007/main.do?option=corp&textCrpNm=${encodeURIComponent(o.p.n)}" target="_blank" rel="noopener">DART</a>
+      · <a href="https://map.kakao.com/link/search/${encodeURIComponent(o.p.a)}" target="_blank" rel="noopener">카카오맵</a></div></div>`;
+}
+function mpLoadLib() {
+  if (window.L) return Promise.resolve(window.L);
+  if (MP.loading) return MP.loading;
+  return MP.loading = new Promise((ok, no) => {
+    const css = document.createElement("link"); css.rel = "stylesheet";
+    css.href = "vendor/leaflet/leaflet.css"; document.head.appendChild(css);
+    const js = document.createElement("script"); js.src = "vendor/leaflet/leaflet.js";
+    js.onload = () => ok(window.L); js.onerror = () => no(new Error("지도 라이브러리를 불러오지 못했습니다"));
+    document.head.appendChild(js);
+  });
+}
+function initMap() {
+  $("#mp-hubs").innerHTML = MP_HUBS.map(([n]) => `<button data-n="${n}" class="${n === MP.place ? "on" : ""}">${n}</button>`).join("");
+  $$("#mp-hubs button").forEach(b => b.onclick = () => { const h = MP_HUBS.find(x => x[0] === b.dataset.n); mpGo([h[1], h[2]], h[0]); });
+  segBtns("#mp-r", v => { MP.r = +v; mpRender(true); });
+  $("#mp-f").onchange = e => { MP.f = e.target.value; mpRender(); };
+  $("#mp-go").onclick = mpSearch;
+  $("#mp-q").onkeydown = e => { if (e.key === "Enter") mpSearch(); };
+  $("#mp-me").onclick = () => {
+    if (!navigator.geolocation) return alertMsg("이 브라우저는 위치 기능을 지원하지 않습니다.");
+    navigator.geolocation.getCurrentPosition(p => mpGo([p.coords.latitude, p.coords.longitude], "내 위치"),
+      () => alertMsg("위치 권한이 없어 현재 위치를 쓸 수 없습니다. 장소 이름으로 찾아 주세요."), {timeout: 8000});
+  };
+  $("#mp-list").onclick = e => { const it = e.target.closest(".mp-it"); if (it) mpFocus(it.dataset.cc); };
+  const st = (RAW || D).geo?.stats;
+  $("#mp-foot").textContent = st ? `위치 확보 ${st.located.toLocaleString()} / ${st.corps.toLocaleString()}개사 (건물 단위 ${(st.by_level["1"] || 0).toLocaleString()} · 동 ${(st.by_level["2"] || 0).toLocaleString()} · 구 ${(st.by_level["3"] || 0).toLocaleString()})${st.pending ? ` · 아직 못 찾은 ${st.pending.toLocaleString()}개사는 다음 갱신 때 채워집니다` : ""} · 지도 © OpenStreetMap` : "";
+}
+function alertMsg(t) { $("#mp-results").innerHTML = `<span class="meta">${esc(t)}</span>`; $("#mp-results").classList.add("on"); }
+async function mpOpen() {
+  if (!(RAW || D).geo?.corps) { $("#mp-map").innerHTML = '<div class="meta" style="padding:20px">지도 위치 자료가 아직 없습니다. 다음 갱신부터 표시됩니다.</div>'; return; }
+  if (MP.map) { setTimeout(() => MP.map.invalidateSize(), 50); return; }
+  let L;
+  try { L = await mpLoadLib(); } catch (e) { $("#mp-map").innerHTML = `<div class="meta" style="padding:20px">${esc(e.message)}</div>`; return; }
+  $("#mp-map").innerHTML = "";
+  MP.L = L;
+  MP.map = L.map("mp-map", {zoomControl: true, preferCanvas: true}).setView(MP.center, 15);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(MP.map);
+  MP.layer = L.layerGroup().addTo(MP.map);
+  MP.map.on("click", e => mpGo([e.latlng.lat, e.latlng.lng], "지도에서 고른 곳", false));
+  MP.map.on("popupopen", e => { const a = e.popup.getElement()?.querySelector("[data-co]"); if (a) a.onclick = ev => { ev.preventDefault(); const cc = a.dataset.co; CO_BY_CODE[cc] ??= mpInfo()[cc]?.co; openCompany(cc); }; });
+  mpRender(true);
+}
+function mpGo(c, name, fit = true) {
+  MP.center = c; MP.place = name;
+  $$("#mp-hubs button").forEach(b => b.classList.toggle("on", b.dataset.n === name));
+  $("#mp-results").classList.remove("on");
+  mpRender(fit);
+}
+function mpRender(fit) {
+  const I = mpInfo();
+  const near = Object.values(I).map(o => ({o, d: KM(MP.center, [o.p.lat, o.p.lng])}))
+    .filter(x => x.d <= MP.r && mpPass(x.o)).sort((a, b) => b.o.rank - a.o.rank || a.d - b.d);
+  const all = Object.values(I).filter(o => KM(MP.center, [o.p.lat, o.p.lng]) <= MP.r).length;
+  $("#mp-place").textContent = MP.place;
+  $("#mp-count").textContent = `반경 ${distTxt(MP.r)} · ${near.length.toLocaleString()}개사${MP.f ? ` (전체 ${all.toLocaleString()}개사 중)` : ""}`;
+  $("#mp-list").innerHTML = near.length ? near.slice(0, 300).map(({o, d}) => `<div class="mp-it" data-cc="${o.cc}">
+      <div class="t"><span><span class="mp-dot" style="background:${mpColor(o)}"></span><b>${esc(o.p.n)}</b> <span class="meta">${esc(o.co?.market_label || "")}</span></span><span class="meta">${distTxt(d)}</span></div>
+      <div class="tags">${mpTags(o)}</div></div>`).join("")
+    : '<div class="meta" style="padding:14px">이 반경에 조건에 맞는 법인이 없습니다. 반경을 넓히거나 \'모든 법인\'으로 바꿔 보세요.</div>';
+  if (!MP.map) return;
+  const L = MP.L;
+  MP.layer.clearLayers(); MP.markers = {};
+  MP.ring = L.circle(MP.center, {radius: MP.r, color: "#1f6feb", weight: 1, fillOpacity: 0.04}).addTo(MP.layer);
+  MP.pin = L.circleMarker(MP.center, {radius: 6, color: "#fff", weight: 2, fillColor: "#0f1b2d", fillOpacity: 1}).addTo(MP.layer).bindTooltip(esc(MP.place));
+  near.slice().reverse().forEach(({o}) => {
+    const m = L.circleMarker([o.p.lat, o.p.lng], {radius: o.owner || o.co?.watch ? 8 : 6, color: "#fff", weight: 1.5,
+      fillColor: mpColor(o), fillOpacity: o.p.lv > 1 ? 0.55 : 0.9, dashArray: o.p.lv > 1 ? "2 2" : null}).addTo(MP.layer);
+    m.bindPopup(() => mpPopup(o), {maxWidth: 320}).bindTooltip(esc(o.p.n), {direction: "top", offset: [0, -6]});
+    m.on("click", () => $$(".mp-it").forEach(x => x.classList.toggle("on", x.dataset.cc === o.cc)));
+    MP.markers[o.cc] = m;
+  });
+  if (fit) MP.map.fitBounds(MP.ring.getBounds(), {padding: [10, 10]});
+}
+function mpFocus(cc) {
+  $$(".mp-it").forEach(x => x.classList.toggle("on", x.dataset.cc === cc));
+  const m = MP.markers[cc];
+  if (m && MP.map) {
+    if (innerWidth <= 900) $("#mp-map").scrollIntoView({behavior: "smooth", block: "center"});
+    MP.map.setView(m.getLatLng(), Math.max(MP.map.getZoom(), 16)); m.openPopup();
+  }
+}
+async function mpSearch() {
+  const q = $("#mp-q").value.trim();
+  if (!q) return;
+  const box = $("#mp-results");
+  const I = mpInfo();
+  const cos = Object.values(I).filter(o => o.p.n.includes(q)).slice(0, 5);
+  const hub = MP_HUBS.find(h => h[0] === q || h[0].replace("역", "") === q.replace("역", ""));
+  if (hub) return mpGo([hub[1], hub[2]], hub[0]);
+  let places = [];
+  box.innerHTML = '<span class="meta">찾는 중…</span>'; box.classList.add("on");
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=kr&accept-language=ko&q=${encodeURIComponent(q)}`);
+    places = r.ok ? await r.json() : [];
+  } catch (e) { places = []; }
+  const btn = (lat, lng, name, sub) => `<button data-lat="${lat}" data-lng="${lng}" data-n="${esc(name)}"><b>${esc(name)}</b> <span class="meta">${esc(sub)}</span></button>`;
+  const html = cos.map(o => btn(o.p.lat, o.p.lng, o.p.n, "법인 · " + o.p.a.slice(0, 24)))
+    .concat(places.map(p => btn(p.lat, p.lon, p.name || q, (p.display_name || "").split(",").slice(1, 4).join(",")))).join("");
+  box.innerHTML = html || '<span class="meta">찾지 못했습니다. 역·건물·동 이름으로 다시 찾거나, 지도를 직접 눌러 기준점을 정해 주세요.</span>';
+  $$("#mp-results button").forEach(b => b.onclick = () => {
+    const c = [+b.dataset.lat, +b.dataset.lng];
+    mpGo(c, b.dataset.n);
+    const hit = Object.values(I).find(o => o.p.n === b.dataset.n && o.p.lat === c[0]);
+    if (hit) setTimeout(() => mpFocus(hit.cc), 300);
+  });
+  if (cos.length + places.length === 1) $("#mp-results button").click();
+}
+
 function initSearch() {
   const inp = $("#q"), box = $("#sugg");
   let idx = 0, hits = [];
