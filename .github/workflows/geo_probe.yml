@@ -1,0 +1,22 @@
+name: 지도 좌표 시험 (수동)
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt && mkdir -p cache
+      - name: 화면 데이터 복호화
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: python scripts/seal.py open docs/data/data.enc docs/data/data.json
+      - name: 좌표 시험 (법인명·주소만 출력)
+        run: python scripts/geocode.py --probe 40
