@@ -43,9 +43,18 @@ def clean(addr: str) -> str:
     return re.sub(r"\s+", " ", a).strip(" -,")
 
 
+SIDO = {"서울": "서울특별시", "부산": "부산광역시", "대구": "대구광역시", "인천": "인천광역시", "광주": "광주광역시",
+        "대전": "대전광역시", "울산": "울산광역시", "세종": "세종특별자치시", "경기": "경기도", "강원": "강원특별자치도",
+        "충북": "충청북도", "충남": "충청남도", "전북": "전북특별자치도", "전남": "전라남도", "경북": "경상북도",
+        "경남": "경상남도", "제주": "제주특별자치도", "서울시": "서울특별시"}
+
+
 def parts(addr: str) -> dict:
     """도로명(번호까지) · 지번 · 동 · 시군구 후보"""
     a = clean(addr)
+    first = a.split(" ", 1)
+    if first and first[0] in SIDO:
+        a = SIDO[first[0]] + (" " + first[1] if len(first) > 1 else "")
     paren = re.findall(r"\(([^)]*)\)", a)
     base = re.sub(r"\([^)]*\)", " ", a)
     base = re.sub(r"\s+", " ", base).strip()

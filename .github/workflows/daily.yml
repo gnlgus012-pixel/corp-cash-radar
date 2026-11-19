@@ -92,6 +92,17 @@ jobs:
           PLEDGE_MAX_DOCS: "300"
         run: python scripts/pledge.py
 
+      # 섭외 지도 — 법인 본사 주소 → 좌표 (새 법인·주소 바뀐 법인만)
+      - name: 지도 좌표
+        if: always()
+        continue-on-error: true
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
+          RADAR_TIME_BUDGET_MIN: "5"
+          GEO_MAX_NEW: "200"
+        run: python scripts/geocode.py
+
       # 만기·상환 캘린더 (회사채·메자닌·주식담보·대여금) — 처음 며칠은 과거 발행분을 이어서 채움
       - name: 만기 캘린더
         if: always()

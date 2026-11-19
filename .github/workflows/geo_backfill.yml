@@ -1,0 +1,62 @@
+name: 지도 좌표 채우기 (수동)
+
+# 섭외 지도용 법인 좌표를 처음 한 번에 채울 때 (OpenStreetMap 은 1초 1건이라 수천 개사면 1시간 남짓).
+# 화면 데이터를 복호화 → geo 항목만 다시 붙임 → 다시 암호화. 일일 갱신과 겹치지 않게 같은 줄에 선다.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar-update
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main   # 트리거 커밋이 아니라 최신 main (그 사이 올라온 데이터 커밋과 충돌 방지)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: 캐시 복원
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+          restore-keys: radar-cache-
+      - run: pip install -r requirements.txt && mkdir -p cache
+      - name: 화면 데이터 복호화
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: python scripts/seal.py open docs/data/data.enc docs/data/data.json
+      - name: 지도 좌표
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
+          RADAR_TIME_BUDGET_MIN: "80"
+          GEO_MAX_NEW: "6000"
+        run: python scripts/geocode.py
+      - name: 암호화
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          SITE_USERS: ${{ secrets.SITE_USERS }}
+          VISIT_LOG_URL: ${{ secrets.VISIT_LOG_URL }}
+        run: python scripts/seal.py seal docs/data/data.json docs/data/data.enc
+      - name: 캐시 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache
+          key: radar-cache-${{ github.run_id }}
+      - name: 결과 반영
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A docs/data/ reports/
+          git diff --cached --quiet || { git commit -m "data: $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M') 지도 좌표 채우기"; git pull --rebase -X theirs origin main; git push; }
