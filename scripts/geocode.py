@@ -181,12 +181,26 @@ def main() -> int:
     try:
         for cc, v in corps.items():
             a = clean(v.get("addr") or "")
-            if not a or a in cache:
+            hit = cache.get(a)
+            # 카카오 키가 생기면, OSM 으로 건물을 못 찾았던(동·구 중심·실패) 주소만 카카오로 다시 찾는다
+            redo = bool(KAKAO_KEY and hit and hit.get("src") != "kakao" and (hit.get("miss") or hit.get("lv", 1) > 1)
+                        and not hit.get("kakao_tried"))
+            if not a or (hit and not redo):
                 continue
             if new >= MAX_NEW:
                 STATS["pending"] += 1
                 continue
             C.check_time()
+            if redo:
+                p = parts(a)
+                r = next(((*k, 1, "kakao") for q in (p["road"], p["jibun"], p["full"]) if q for k in [kakao(q)] if k), None)
+                new += 1
+                if r and inside_korea(r[0], r[1]):
+                    cache[a] = {"lat": r[0], "lng": r[1], "lv": 1, "src": "kakao"}
+                    STATS["kakao_upgraded"] += 1
+                else:
+                    hit["kakao_tried"] = 1
+                continue
             r = locate(a)
             new += 1
             cache[a] = {"lat": r[0], "lng": r[1], "lv": r[2], "src": r[3]} if r and inside_korea(r[0], r[1]) \
