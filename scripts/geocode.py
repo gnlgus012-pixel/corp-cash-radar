@@ -147,15 +147,16 @@ def inside_korea(lat, lng) -> bool:
     return 33.0 <= lat <= 38.7 and 124.5 <= lng <= 131.0
 
 
-# ───────── 수도권 사무소: 본점(등기)이 지방인데 실제 본사·사무소가 서울·경기에 있는 법인 ─────────
+# ───────── 사업장: DART 본점(등기)과 다른 곳에 있는 사무소·연구소·공장 (카카오 장소 검색) ─────────
 OFFICE_PATH = C.CACHE_DIR / "offices.json"
-OFFICE_VER = 2
+OFFICE_VER = 3
 OFFICE_TTL_DAYS = 60
 CAPITAL_RX = re.compile(r"^(서울|경기|인천)")
-OFFICE_CAT_OK = re.compile(r"회사|기업|사무실|연구소|건설업|제조업|제약|IT|금융|공공기관")
-# 사무소로 볼 수 있는 이름 — 이게 없으면 서울 주소의 '법인명 그대로' 장소만 인정 (경기·인천의 같은 이름 장소는 공장·동명 회사가 많음)
-OFFICE_NAME_OK = re.compile(r"본사|사옥|사무소|사무실|지사|오피스|본부|R&D|연구소|연구센터|캠퍼스|비즈니스\s*센터|타워|센터$")
-OFFICE_NAME_BAD = re.compile(r"CS\s*센터|고객센터|A/S|AS센터|파트$|정비|지점|대리점|매장|판매점|직영점|서비스센터|물류센터|창고|공장|주유소|충전소|ATM|지점$|영업소|출장소|교육원|연수원|기숙사|어린이집")
+OFFICE_CAT_OK = re.compile(r"회사|기업|사무실|연구소|건설업|제조업|제약|IT|금융|공공기관|산업|공장")
+SITE_LAB = re.compile(r"R&D|연구|기술원|이노베이션|테크센터|기술센터")
+SITE_FAC = re.compile(r"공장|사업장|생산|플랜트|공단|사이트|팩토리|제조|산단|단지|캠퍼스")
+SITE_OFF = re.compile(r"본사|사옥|사무소|사무실|지사|오피스|본부|비즈니스\s*센터|타워|센터$")
+OFFICE_NAME_BAD = re.compile(r"CS\s*센터|고객센터|A/S|AS센터|파트$|정비|지점|대리점|매장|판매점|직영점|서비스센터|물류|창고|주유소|충전소|ATM|영업소|출장소|교육원|연수원|기숙사|어린이집|식당|카페|주차장|정문|후문|경비실|게이트")
 
 
 def nm(s: str) -> str:
@@ -176,27 +177,48 @@ def kakao_keyword(q: str) -> list:
         return []
 
 
+def site_type(name: str, pn: str, addr: str) -> str | None:
+    """장소 이름의 법인명 뒤 꼬리로 종류를 정한다. 꼬리가 없으면 서울 주소일 때만 사무소로 인정 (지방의 같은 이름은 동명 회사가 많음)"""
+    tail = pn[len(name):] if pn.startswith(name) else pn[len(nm(name)):]
+    if SITE_LAB.search(tail):
+        return "연구소"
+    if SITE_FAC.search(tail):
+        return "공장"
+    if SITE_OFF.search(tail):
+        return "사무소"
+    if not tail.strip() and addr.startswith("서울"):
+        return "사무소"
+    return None
+
+
 def find_offices(name: str, home: tuple | None) -> list:
-    """카카오 장소 검색으로 '법인명' 또는 '법인명 ○○' 이름의 수도권 회사 장소를 찾는다 (등기 본점과 5km 넘게 떨어진 곳만)"""
+    """카카오 장소 검색: '법인명 ○○' 이름의 사무소·연구소·공장 중 DART 본점과 1km 넘게 떨어진 곳"""
     n0 = nm(name)
-    out = []
-    for d in kakao_keyword(name):
-        pn = d.get("place_name") or ""
-        # 이름이 정확히 같거나 '법인명 + 공백/괄호'로 시작해야 함 ('SK' 가 'SK텔레콤' 에 걸리지 않게)
-        if not (nm(pn) == n0 or re.match(re.escape(name) + r"[\s(]", pn) or re.match(re.escape(n0) + r"[\s(]", pn)):
-            continue
-        addr = d.get("road_address_name") or d.get("address_name") or ""
-        if not CAPITAL_RX.match(addr) or OFFICE_NAME_BAD.search(pn) or not OFFICE_CAT_OK.search(d.get("category_name") or ""):
-            continue
-        if not OFFICE_NAME_OK.search(pn[len(name):]) and not addr.startswith("서울"):
-            continue
-        lat, lng = round(float(d["y"]), 6), round(float(d["x"]), 6)
-        if home and _km(home, (lat, lng)) < 5:
-            continue
-        if any(_km((o["lat"], o["lng"]), (lat, lng)) < 0.3 for o in out):
-            continue
-        out.append({"pn": pn, "a": addr, "lat": lat, "lng": lng, "cat": (d.get("category_name") or "").split(" > ")[-1]})
-    return out[:3]
+    out, seen = [], set()
+    for q in (name, name + " 공장"):
+        for d in kakao_keyword(q):
+            pn = d.get("place_name") or ""
+            if d.get("id") in seen:
+                continue
+            seen.add(d.get("id"))
+            # 이름이 정확히 같거나 '법인명 + 공백/괄호'로 시작해야 함 ('SK' 가 'SK텔레콤' 에 걸리지 않게)
+            if not (nm(pn) == n0 or re.match(re.escape(name) + r"[\s(]", pn) or re.match(re.escape(n0) + r"[\s(]", pn)):
+                continue
+            addr = d.get("road_address_name") or d.get("address_name") or ""
+            if OFFICE_NAME_BAD.search(pn) or not OFFICE_CAT_OK.search(d.get("category_name") or ""):
+                continue
+            t = site_type(name, pn, addr)
+            if not t:
+                continue
+            lat, lng = round(float(d["y"]), 6), round(float(d["x"]), 6)
+            if home and _km(home, (lat, lng)) < 1:
+                continue
+            if any(_km((o["lat"], o["lng"]), (lat, lng)) < 0.3 for o in out):
+                continue
+            out.append({"pn": pn, "a": addr, "lat": lat, "lng": lng, "t": t,
+                        "cat": (d.get("category_name") or "").split(" > ")[-1]})
+    order = {"사무소": 0, "연구소": 1, "공장": 2}
+    return sorted(out, key=lambda o: order[o["t"]])[:6]
 
 
 def _km(a, b) -> float:
@@ -291,7 +313,7 @@ def main() -> int:
         C.warn("시간 제한으로 지도 좌표 찾기를 중간에 멈췄습니다 — 다음 실행에서 이어서 찾습니다.")
     C.save_json(GEO_PATH, cache)
 
-    # 수도권 사무소 (카카오 키가 있을 때만): 본점이 서울·경기·인천 밖인 법인
+    # 사업장 (카카오 키가 있을 때만): 모든 국내 법인
     offices = C.load_json(OFFICE_PATH, {})
     if KAKAO_KEY:
         today = C.now_kst().date()
@@ -299,7 +321,7 @@ def main() -> int:
         try:
             for cc, v in corps.items():
                 a = parts(v.get("addr") or "")["full"]
-                if not a or CAPITAL_RX.match(a) or not re.search(r"[가-힣]", a):
+                if not a or not re.search(r"[가-힣]", a):
                     continue
                 hit = offices.get(cc)
                 if hit and hit.get("v") == OFFICE_VER and (today - C.date.fromisoformat(hit["t"])).days < OFFICE_TTL_DAYS:
@@ -310,7 +332,7 @@ def main() -> int:
                                "items": find_offices(v["name"], (g["lat"], g["lng"]) if "lat" in g else None)}
                 n_off += 1
         except C.OutOfTime:
-            C.warn("시간 제한으로 수도권 사무소 찾기를 중간에 멈췄습니다 — 다음 실행에서 이어서 찾습니다.")
+            C.warn("시간 제한으로 사업장 찾기를 중간에 멈췄습니다 — 다음 실행에서 이어서 찾습니다.")
         C.save_json(OFFICE_PATH, offices)
         STATS["office_lookups"] = n_off
 
@@ -331,7 +353,8 @@ def main() -> int:
              "no_addr": sum(1 for v in corps.values() if not v.get("addr")),
              "miss": sum(1 for v in corps.values() if (cache.get(clean(v.get("addr") or "")) or {}).get("miss")),
              "pending": STATS["pending"], "new": new, "src": "kakao" if KAKAO_KEY else "osm",
-             "offices": sum(1 for p in pts.values() if p.get("o")), "phone_capital": sum(1 for p in pts.values() if p.get("ph"))}
+             "offices": sum(1 for p in pts.values() if p.get("o")),
+             "sites_by_type": dict(Counter(o["t"] for p in pts.values() for o in p.get("o", []))), "phone_capital": sum(1 for p in pts.values() if p.get("ph"))}
     data["geo"] = {"corps": pts, "stats": stats}
     C.OUT_PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     C.save_json(C.ROOT / "reports" / "geo_status.json",   # 공개용: 건수만

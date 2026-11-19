@@ -618,12 +618,12 @@ tbody tr.click:hover{background:var(--surface-2)}
       <button class="btn" id="mp-go">찾기</button>
       <button class="btn" id="mp-me" title="브라우저 위치 권한 필요">내 위치</button>
       <div class="seg-btns" id="mp-r"><button data-v="500">500m</button><button data-v="1000" class="on">1km</button><button data-v="2000">2km</button><button data-v="5000">5km</button></div>
-      <select id="mp-f"><option value="" selected>모든 법인</option><option value="pri">섭외 대상 (A·B등급)</option><option value="A">A등급만 (지금 갈 이유 있음)</option><option value="owner">대주주 이슈 있는 법인</option><option value="cash">여유자금 60점↑</option><option value="kis">한투가 담보권자인 법인</option></select>
+      <select id="mp-f"><option value="" selected>모든 법인</option><option value="pri">섭외 대상 (A·B등급)</option><option value="A">A등급만 (지금 갈 이유 있음)</option><option value="owner">대주주 이슈 있는 법인</option><option value="cash">여유자금 60점↑</option><option value="kis">한투가 담보권자인 법인</option><option value="hq">DART 본점만 (사업장 숨김)</option><option value="fac">공장·사업장만</option></select>
     </div>
     <div class="mp-hubs" id="mp-hubs"></div>
     <div id="mp-results" class="mp-results"></div>
     <div class="meta mp-legend"><span class="mp-g gA">A</span> 지금 갈 이유 있음 (담보 90일 내 만기 · 저축은행·캐피탈 담보 · 90일 내 락업 해제 · 여유자금 70점↑) &nbsp; <span class="mp-g gB">B</span> 대주주 이슈 또는 여유자금 60점↑ &nbsp; <span class="mp-g gC">C</span> 그 외
-      <br>점 색: <span class="mp-watch-lg" hidden><span class="mp-dot" style="background:#7c3aed"></span>관심법인 &nbsp; </span><span class="mp-dot" style="background:#e8590c"></span>대주주 이슈 &nbsp; <span class="mp-dot" style="background:#1f6feb"></span>여유자금 60점↑ &nbsp; <span class="mp-dot" style="background:#8a94a6"></span>기타 · <span class="mp-dot" style="background:#e8590c;box-shadow:0 0 0 2px #6b3fd4"></span>보라 테두리 = 수도권 사무소 (DART 본점은 지방) · 흐린 점 = 위치 대략 · 지도를 옮기거나 확대·축소하면 그 화면 안 법인으로 바뀝니다 · 지도를 누르면 그곳이 거리 기준점</div>
+      <br>점 색: <span class="mp-watch-lg" hidden><span class="mp-dot" style="background:#7c3aed"></span>관심법인 &nbsp; </span><span class="mp-dot" style="background:#e8590c"></span>대주주 이슈 &nbsp; <span class="mp-dot" style="background:#1f6feb"></span>여유자금 60점↑ &nbsp; <span class="mp-dot" style="background:#8a94a6"></span>기타<br>테두리 = DART 본점이 아닌 다른 사업장 (카카오 장소 검색): <span class="mp-dot" style="background:#8a94a6;box-shadow:0 0 0 2px #6b3fd4"></span>사무소 &nbsp; <span class="mp-dot" style="background:#8a94a6;box-shadow:0 0 0 2px #0e9f6e"></span>연구소 &nbsp; <span class="mp-dot" style="background:#8a94a6;box-shadow:0 0 0 2px #8a5a00"></span>공장·사업장 · 흐린 점 = 위치 대략 · 지도를 옮기거나 확대·축소하면 그 화면 안 법인으로 바뀝니다 · 지도를 누르면 그곳이 거리 기준점</div>
     <div class="mp-wrap">
       <div id="mp-map" class="card"><div class="meta" style="padding:20px">지도를 불러오는 중…</div></div>
       <div class="mp-side card"><div class="mp-head"><b id="mp-place">여의도</b> <span class="meta" id="mp-count"></span></div><div id="mp-list"></div></div>
@@ -1952,9 +1952,13 @@ function mpInfo() {   // 법인별 섭외 정보 (등급·대주주 이슈) — 
   }));
   return MP.info = I;
 }
+const SITE_T = {"사무소": {c: "#6b3fd4", l: "사무소"}, "연구소": {c: "#0e9f6e", l: "연구소"}, "공장": {c: "#8a5a00", l: "공장·사업장"}};
+const siteT = f => SITE_T[f?.t || "사무소"];
 function mpPass(o) {
   const f = MP.f;
   if (!f) return true;
+  if (f === "hq") return !o.off;
+  if (f === "fac") return o.off?.t === "공장";
   if (f === "A") return o.grade === "A";
   if (f === "owner") return o.owner;
   if (f === "cash") return (o.score || 0) >= 60;
@@ -1980,8 +1984,8 @@ function mpTags(o) {
   if (o.pl?.alt) t.push(`<span class="tag out" title="저축은행·캐피탈 담보 = 금리가 높아 증권사 담보대출로 대환 제안 여지">저축은행·캐피탈 ${o.pl.alt}건</span>`);
   if (o.lk) t.push(`<span class="tag out" title="상장 때 묶인 대주주 주식이 풀리는 날">락업 해제 ${ymdDot(o.lk.date)}${o.lk.amt ? " · " + eok(o.lk.amt) : ""}</span>`);
   if (o.ow) t.push(`<span class="tag gray" title="최근 90일 대주주 지분 매각·증여·담보 등 공시">대주주 공시 ${o.ow}건 (90일)</span>`);
-  if (o.off) t.push(`<span class="tag k-mezz" title="DART 본점(등기)은 ${esc(o.home.a)} — 카카오 장소 '${esc(o.off.pn)}'(${esc(o.off.cat)})">수도권 사무소 · 본점 ${esc(o.home.a.split(" ").slice(0, 2).join(" "))}</span>`);
-  else if (o.p.o?.length) t.push(`<span class="tag k-mezz" title="${esc(o.p.o.map(f => f.pn + " " + f.a).join(" / "))}">수도권 사무소 ${o.p.o.length}곳 있음</span>`);
+  if (o.off) t.push(`<span class="tag" style="background:${siteT(o.off).c}1a;color:${siteT(o.off).c}" title="DART 본점(등기)은 ${esc(o.home.a)} — 카카오 장소 '${esc(o.off.pn)}'(${esc(o.off.cat)})">${siteT(o.off).l} · 본점은 ${esc(o.home.a.split(" ").slice(0, 2).join(" "))}</span>`);
+  else if (o.p.o?.length) t.push(`<span class="tag gray" title="${esc(o.p.o.map(f => siteT(f).l + ": " + f.pn + " " + f.a).join(" / "))}">다른 사업장 ${o.p.o.length}곳 (${[...new Set(o.p.o.map(f => siteT(f).l))].join("·")})</span>`);
   else if (o.p.ph) t.push(`<span class="tag gray" title="본점은 지방이지만 대표·공시담당 전화가 ${o.p.ph} 번호 — 수도권 사무소가 있을 수 있음">전화 ${o.p.ph} 번호</span>`);
   if (o.p.lv > 1) t.push(`<span class="tag gray" title="주소로 건물을 못 찾아 ${o.p.lv === 2 ? "동·읍·면" : "시군구"} 중심에 표시">위치 대략</span>`);
   return t.join("");
@@ -1998,7 +2002,7 @@ function plRowsHtml(rows, max = 6) {   // 주식담보 계약 요약표 (지도 
 function mpPopup(o) {
   const c = o.co, i = c?.info || {};
   return `<div class="mp-pop"><b>${esc(o.p.n)}</b> <span class="meta">${esc(c?.market_label || "")}</span>
-    <div class="row meta">${o.off ? `<b>${esc(o.off.pn)}</b> ${esc(o.p.a)}<br>본점(DART): ${esc(o.home.a)}` : esc(o.p.a)}${!o.off && o.p.o?.length ? `<br>수도권 사무소: ${o.p.o.map(f => esc(f.pn) + " (" + esc(f.a) + ")").join(", ")}` : ""}</div>
+    <div class="row meta">${o.off ? `<b style="color:${siteT(o.off).c}">[${siteT(o.off).l}]</b> <b>${esc(o.off.pn)}</b> ${esc(o.p.a)}<br>본점(DART)은 다른 곳: ${esc(o.home.a)}` : esc(o.p.a)}${!o.off && o.p.o?.length ? `<br>다른 사업장: ${o.p.o.map(f => `[${siteT(f).l}] ${esc(f.pn)}`).join(", ")}` : ""}</div>
     ${i.ceo || i.phone ? `<div class="row">${i.ceo ? "대표 " + esc(i.ceo) : ""}${i.phone ? " · " + esc(i.phone) : ""}</div>` : ""}
     ${o.why.length ? `<div class="row mp-why"><b>지금 갈 이유</b> ${o.why.map(esc).join(" · ")}</div>` : ""}
     <div class="row" style="display:flex;flex-wrap:wrap;gap:4px">${mpTags(o)}</div>
@@ -2101,11 +2105,11 @@ function mpRender() {
   draw.slice().reverse().forEach(({o}) => {
     if (MP.markers[o.k]) return;
     const big = o.grade !== "C";
-    const m = L.circleMarker([o.p.lat, o.p.lng], {radius: big ? 8 : 6, color: o.off ? "#6b3fd4" : "#fff", weight: o.off ? 3 : 1.5,
+    const m = L.circleMarker([o.p.lat, o.p.lng], {radius: big ? 8 : 6, color: o.off ? siteT(o.off).c : "#fff", weight: o.off ? 3 : 1.5,
       fillColor: mpColor(o), fillOpacity: o.p.lv > 1 ? 0.55 : 0.9, dashArray: o.p.lv > 1 ? "2 2" : null}).addTo(MP.layer);
     m.bindPopup(() => mpPopup(o), {maxWidth: 360, autoPanPadding: [20, 20]});
     const sh = mpShort(o);
-    const lab = `<span class="mp-g g${o.grade}">${o.grade}</span> <b>${esc(o.p.n)}</b>${o.off ? ' <span class="mp-s">(사무소)</span>' : ""}${sh ? ` <span class="mp-s">${esc(sh)}</span>` : ""}`;
+    const lab = `<span class="mp-g g${o.grade}">${o.grade}</span> <b>${esc(o.p.n)}</b>${o.off ? ` <span class="mp-s">(${siteT(o.off).l})</span>` : ""}${sh ? ` <span class="mp-s">${esc(sh)}</span>` : ""}`;
     m.bindTooltip(lab, {permanent: top.has(o.k), direction: "top", offset: [0, -7], className: "mp-lab"});
     m._lab = top.has(o.k); m._f = MP.f;
     m.on("click", () => $$(".mp-it").forEach(x => x.classList.toggle("on", x.dataset.cc === o.k)));
