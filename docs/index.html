@@ -338,6 +338,18 @@ tbody tr.click:hover{background:var(--surface-2)}
 .mp-pl{width:100%;margin-top:4px;font-size:12px;border-collapse:collapse}
 .mp-pl th,.mp-pl td{padding:3px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:normal}
 .mp-pl .num{text-align:right}.mp-pl th{position:static!important;top:auto!important;background:transparent!important;color:var(--ink-3);font-weight:500}
+@media (max-width:640px){
+  input,select,textarea{font-size:16px!important}   /* iOS 는 16px 미만 입력칸을 누르면 화면을 확대해 옆으로 밀림 */
+  .mp-bar input#mp-q{flex:1 1 100%;min-width:0;padding:10px 12px}
+  .mp-bar #mp-go,.mp-bar #mp-me{flex:1 1 0;white-space:nowrap}
+  .mtab thead{display:none}
+  .mtab,.mtab tbody{display:block;width:100%}
+  .mtab tr{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .mtab td{display:block;border:0!important;padding:0!important;white-space:normal!important;text-align:left!important;max-width:100%}
+  .mtab td.wrap{flex-basis:100%}
+  .mtab td[data-l]::before{content:attr(data-l) " ";color:var(--ink-3);font-size:12px}
+  .db .tw{overflow:visible}
+}
 </style>
 </head>
 <body>
@@ -602,7 +614,7 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="sub">가는 곳을 고르면 그 근처 본사 법인을 섭외 우선순위대로 보여 줍니다. 대주주 이슈(주식담보·락업 해제·자금 공시)와 여유자금 점수를 함께 봅니다.
       <br><span class="meta">위치 = DART 기업개황의 본점 주소. 공장·지점이 아니라 본사 기준입니다. 주소로 정확히 못 찾은 법인은 동·구 중심에 '대략'으로 찍힙니다.</span></p>
     <div class="filters mp-bar">
-      <input type="text" id="mp-q" placeholder="장소·역 이름 또는 법인명 (예: 서울역)">
+      <input type="text" id="mp-q" placeholder="장소·역·법인명 (예: 서울역)">
       <button class="btn" id="mp-go">찾기</button>
       <button class="btn" id="mp-me" title="브라우저 위치 권한 필요">내 위치</button>
       <div class="seg-btns" id="mp-r"><button data-v="500">500m</button><button data-v="1000" class="on">1km</button><button data-v="2000">2km</button><button data-v="5000">5km</button></div>
@@ -2213,18 +2225,18 @@ function pledgeCard(code) {
     <div class="meta" style="margin:-4px 0 8px">대주주·특수관계인이 이 회사 주식을 담보로 맡기고 돈을 빌린 계약입니다. <b>담보권자</b> = 돈을 빌려준 곳 (<span class="uw-kis">한국투자증권</span>이면 이미 우리 회사와 거래 중인 대주주).
       만기가 다가오면 연장·대환 수요가 생기고, 저축은행·캐피탈 담보는 금리가 높아 증권사 담보대출로 대환을 제안할 여지가 있습니다.
       <br>5% 보고서·최대주주변경 공시 기준, 만기 지난 계약 제외. 평가액 = 담보 주식수 × 최근 종가.</div>
-    <div class="tw"><table><thead><tr><th>제공자</th><th>담보권자</th><th class="num">주식수</th><th class="num">평가액</th><th class="num">대출·설정액</th><th>만기</th><th></th></tr></thead><tbody>${
+    <div class="tw"><table class="mtab"><thead><tr><th>제공자</th><th>담보권자</th><th class="num">주식수</th><th class="num">평가액</th><th class="num">대출·설정액</th><th>만기</th><th></th></tr></thead><tbody>${
     L.slice(0, 40).map(i => `<tr><td><b>${esc(i.person || "-")}</b><div class="meta">${esc(i.rel || "")}${i.is_person ? "" : " · 법인"}</div></td>
       <td class="wrap"><span class="${KIS_RX.test(i.lender) ? "uw-kis" : ""}">${esc(i.lender.length > 30 ? i.lender.slice(0, 30) + "…" : i.lender)}</span><div class="meta">${esc(i.lender_kind || "")}${i.ctype ? " · " + esc(i.ctype) : ""}</div></td>
-      <td class="num">${(i.shares || 0).toLocaleString()}주</td><td class="num">${i.value ? eok(i.value) : "-"}</td>
-      <td class="num">${i.loan ? eok(i.loan) : i.amount_set ? eok(i.amount_set) + '<div class="meta">설정액</div>' : "-"}</td>
+      <td class="num" data-l="주식">${(i.shares || 0).toLocaleString()}주</td><td class="num" data-l="평가액">${i.value ? eok(i.value) : "-"}</td>
+      <td class="num" data-l="대출">${i.loan ? eok(i.loan) : i.amount_set ? eok(i.amount_set) + '<div class="meta">설정액</div>' : "-"}</td>
       <td>${i.end ? esc(i.end.replaceAll("-", ".")) + `<div class="meta">${dday(i.end)}</div>` : '<span class="meta">미기재</span>'}</td>
       <td>${DART_LINK(i, "원문")}</td></tr>`).join("")}</tbody></table></div>${L.length > 40 ? `<div class="meta">외 ${L.length - 40}건은 대주주 → 주식담보 화면에서</div>` : ""}</div>`;
 }
 function lockCard(code) {
   const L = (D.lockup?.items || []).filter(i => i.corp_code === code).sort((a, b) => a.date.localeCompare(b.date));
   if (!L.length) return "";
-  return `<div class="card"><h3>대주주 락업 해제 <span class="sub" style="font-weight:400">${L.length}명${uwText(code) ? " · 상장 주관 " + esc(uwText(code)) : ""}</span></h3><table><tbody>${
+  return `<div class="card"><h3>대주주 락업 해제 <span class="sub" style="font-weight:400">${L.length}명${uwText(code) ? " · 상장 주관 " + esc(uwText(code)) : ""}</span></h3><table class="mtab"><tbody>${
     L.slice(0, 30).map(i => `<tr><td>${esc(i.date.replaceAll("-", "."))}<div class="meta">${dday(i.date)}</div></td>
       <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "")}</div></td>
       <td class="num">${i.shares ? i.shares.toLocaleString() + "주" : "-"}</td>
@@ -2234,7 +2246,7 @@ function lockCard(code) {
 function ownerCard(code) {
   const L = (D.holders?.items || []).filter(i => i.corp_code === code).sort((a, b) => b.date.localeCompare(a.date));
   if (!L.length) return lockCard(code);
-  return lockCard(code) + `<div class="card"><h3>대주주(개인) 공시 <span class="sub" style="font-weight:400">${L.length}건</span></h3><table><tbody>${
+  return lockCard(code) + `<div class="card"><h3>대주주(개인) 공시 <span class="sub" style="font-weight:400">${L.length}건</span></h3><table class="mtab"><tbody>${
     L.slice(0, 30).map(i => `<tr><td>${dfmt(i.date)}</td><td><span class="tag ${OW_KIND[i.cat] || "gray"}${i.cancelled ? " strike" : ""}">${esc(i.cat)}</span></td>
       <td><b>${esc(i.person)}</b><div class="meta">${esc(i.relation || "")}</div></td>
       <td class="num">${i.amount ? eok(i.amount) + (i.est ? ' <span class="meta">추정</span>' : "") : "-"}</td>

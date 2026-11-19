@@ -49,9 +49,19 @@ SIDO = {"서울": "서울특별시", "부산": "부산광역시", "대구": "대
         "경남": "경상남도", "제주": "제주특별자치도", "서울시": "서울특별시"}
 
 
+# 행정구역 통합으로 없어진 이름 (DART 주소가 옛 이름 그대로인 법인이 있음)
+LEGACY = {"청원군": "청주시", "여주군": "여주시", "당진군": "당진시", "연기군": "세종특별자치시", "마산시": "창원시",
+          "진해시": "창원시", "포천군": "포천시", "양주군": "양주시", "화성군": "화성시", "김포군": "김포시", "광주군": "광주시",
+          "이천군": "이천시", "안성군": "안성시", "용인군": "용인시", "파주군": "파주시", "평택군": "평택시"}
+GEO_VER = 2   # 주소 정리 규칙이 바뀌면 올림 → 예전에 못 찾은 주소를 다시 찾는다
+
+
 def parts(addr: str) -> dict:
     """도로명(번호까지) · 지번 · 동 · 시군구 후보"""
     a = clean(addr)
+    a = re.sub(r"^(서울시|서울특별시|부산시|대구시|인천시|광주시|대전시|울산시)(?=[가-힣]+구\b)", r"\1 ", a)   # '서울시마포구'
+    for k, v in LEGACY.items():
+        a = a.replace(k, v)
     first = a.split(" ", 1)
     if first and first[0] in SIDO:
         a = SIDO[first[0]] + (" " + first[1] if len(first) > 1 else "")
@@ -185,7 +195,8 @@ def main() -> int:
             # 카카오 키가 생기면 OSM 으로 찾은 주소 전부를 카카오로 다시 찾는다
             # (OSM 은 건물 단위로 찾았다고 해도 같은 도로의 다른 번지에 찍히는 경우가 있음 — 예: 종로 26 이 2km 동쪽)
             redo = bool(KAKAO_KEY and hit and hit.get("src") != "kakao" and not hit.get("kakao_tried"))
-            if not a or (hit and not redo):
+            retry = bool(hit and hit.get("miss") and hit.get("v", 1) < GEO_VER and re.search(r"[가-힣]", a))
+            if not a or (hit and not redo and not retry):
                 continue
             if new >= MAX_NEW:
                 STATS["pending"] += 1
@@ -204,7 +215,7 @@ def main() -> int:
             r = locate(a)
             new += 1
             cache[a] = {"lat": r[0], "lng": r[1], "lv": r[2], "src": r[3]} if r and inside_korea(r[0], r[1]) \
-                else {"miss": 1}
+                else {"miss": 1, "v": GEO_VER}
             if new % 50 == 0:
                 C.save_json(GEO_PATH, cache)
     except C.OutOfTime:
