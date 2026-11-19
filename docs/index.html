@@ -350,6 +350,13 @@ tbody tr.click:hover{background:var(--surface-2)}
   .mtab td[data-l]::before{content:attr(data-l) " ";color:var(--ink-3);font-size:12px}
   .db .tw{overflow:visible}
 }
+@media (max-width:900px){
+  .mp-pop{min-width:0;font-size:12.5px}
+  .mp-pop b{font-size:13px}
+  .leaflet-popup-content{margin:12px 38px 10px 12px}
+  .leaflet-container a.leaflet-popup-close-button{width:34px!important;height:34px!important;font:26px/32px Tahoma,sans-serif!important;top:4px!important;right:4px!important;background:#fff!important;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.35);color:#333!important;text-align:center}
+  .mp-pop details summary{cursor:pointer;color:var(--accent);margin-top:4px}
+}
 </style>
 </head>
 <body>
@@ -2007,7 +2014,9 @@ function mpPopup(o) {
     ${i.ceo || i.phone ? `<div class="row">${i.ceo ? "대표 " + esc(i.ceo) : ""}${i.phone ? " · " + esc(i.phone) : ""}</div>` : ""}
     ${o.why.length ? `<div class="row mp-why"><b>지금 갈 이유</b> ${o.why.map(esc).join(" · ")}</div>` : ""}
     <div class="row" style="display:flex;flex-wrap:wrap;gap:4px">${mpTags(o)}</div>
-    ${o.pl ? `<div class="row"><b style="font-size:13px">대주주 주식담보</b>${plRowsHtml(o.pl.rows, 4)}</div>` : ""}
+    ${o.pl ? (innerWidth <= 900
+      ? `<details class="row"><summary><b style="font-size:13px">대주주 주식담보 ${o.pl.n}건 보기</b></summary>${plRowsHtml(o.pl.rows, 4)}</details>`
+      : `<div class="row"><b style="font-size:13px">대주주 주식담보</b>${plRowsHtml(o.pl.rows, 4)}</div>`) : ""}
     <div class="row">${c ? `<a href="#" data-co="${o.cc.split("@")[0]}">상세 보기</a> · ` : ""}<a href="https://dart.fss.or.kr/dsab007/main.do?option=corp&textCrpNm=${encodeURIComponent(o.p.n)}" target="_blank" rel="noopener">DART</a>
       · <a href="https://map.kakao.com/link/search/${encodeURIComponent(mpAddr(o.p.a))}" target="_blank" rel="noopener">카카오맵</a>
       · <a href="https://map.naver.com/p/search/${encodeURIComponent(mpAddr(o.p.a))}" target="_blank" rel="noopener">네이버지도</a></div></div>`;
@@ -2052,7 +2061,7 @@ async function mpOpen() {
   try { L = await mpLoadLib(); } catch (e) { $("#mp-map").innerHTML = `<div class="meta" style="padding:20px">${esc(e.message)}</div>`; return; }
   $("#mp-map").innerHTML = "";
   MP.L = L;
-  MP.map = L.map("mp-map", {zoomControl: true}).setView(MP.center, 15);
+  MP.map = L.map("mp-map", {zoomControl: innerWidth > 900}).setView(MP.center, 15);   // 모바일은 두 손가락 확대·축소 (버튼이 팝업을 가림)
   mpTiles(0);
   // 지도 칸 크기가 바뀌면(탭 전환·창 크기·글꼴 로딩) 다시 맞춤 — 안 하면 지도 일부나 전체가 흰 화면으로 남음
   if (window.ResizeObserver) new ResizeObserver(() => MP.map && MP.map.invalidateSize()).observe($("#mp-map"));
@@ -2061,7 +2070,17 @@ async function mpOpen() {
   MP.map.on("click", e => mpGo([e.latlng.lat, e.latlng.lng], "지도에서 고른 곳", false));
   // 확대·축소·이동하면 보이는 영역 기준으로 다시 그림 — 단, 팝업이 열리며 지도가 자동으로 밀린 경우는 제외
   MP.map.on("moveend", () => { if (Date.now() - (MP.popT || 0) > 700) mpRender(); });
-  MP.map.on("popupopen", () => { MP.popT = Date.now(); });
+  MP.map.on("popupopen", e => {
+    MP.popT = Date.now();
+    // 모바일: 위에 고정된 머리글에 팝업 윗부분(닫기 ×)이 가리면 화면을 내려서 보이게
+    if (innerWidth > 900) return;
+    setTimeout(() => {
+      const el = e.popup.getElement(), hd = document.querySelector("header");
+      if (!el) return;
+      const top = el.getBoundingClientRect().top, hb = hd ? hd.getBoundingClientRect().bottom : 0;
+      if (top < hb + 8) window.scrollBy({top: top - hb - 12, behavior: "smooth"});
+    }, 300);
+  });
   MP.map.on("popupopen", e => { const a = e.popup.getElement()?.querySelector("[data-co]"); if (a) a.onclick = ev => { ev.preventDefault(); const cc = a.dataset.co; CO_BY_CODE[cc] ??= mpInfo()[cc]?.co; openCompany(cc); }; });
   mpFit();
 }
@@ -2130,7 +2149,9 @@ function mpRender() {
     const big = o.grade !== "C";
     const m = L.circleMarker([o.p.lat, o.p.lng], {radius: big ? 8 : 6, color: o.off ? siteT(o.off).c : "#fff", weight: o.off ? 3 : 1.5,
       fillColor: mpColor(o), fillOpacity: o.p.lv > 1 ? 0.55 : 0.9, dashArray: o.p.lv > 1 ? "2 2" : null}).addTo(MP.layer);
-    m.bindPopup(() => mpPopup(o), {maxWidth: 360, autoPanPadding: [20, 20]});
+    const mob = innerWidth <= 900;   // 모바일: 폭·높이를 줄이고 안에서 스크롤 → 닫기(×)가 항상 화면 안에
+    m.bindPopup(() => mpPopup(o), mob ? {maxWidth: Math.min(290, innerWidth - 70), maxHeight: Math.round(Math.min(340, innerHeight * 0.45)), autoPanPadding: [12, 12]}
+      : {maxWidth: 360, autoPanPadding: [20, 20]});
     const sh = mpShort(o);
     const lab = `<span class="mp-g g${o.grade}">${o.grade}</span> <b>${esc(o.p.n)}</b>${o.off ? ` <span class="mp-s">(${siteT(o.off).l})</span>` : ""}${sh ? ` <span class="mp-s">${esc(sh)}</span>` : ""}`;
     m.bindTooltip(lab, {permanent: top.has(o.k), direction: "top", offset: [0, -7], className: "mp-lab"});
