@@ -545,13 +545,21 @@ def update_financials(universe: dict, infos: dict | None = None) -> dict:
     order = sorted(universe.values(), key=lambda c: not c["watch"])  # 관심법인 먼저
     fetched = skipped = 0
     now = now_kst()
+    # 새 분기보고서 시즌: 가장 최근 보고서(예: 3분기)가 아직 아닌 법인은 14일을 기다리지 않고 3일마다 다시 확인
+    cands = report_candidates(now.date())
+    newest = f"{cands[0][0]} {REPORT_LABEL[cands[0][1]]}" if cands else None
+    behind = 0
     try:
         for c in order:
             cc = c["corp_code"]
             hit = cache.get(cc)
             ind = ((infos or {}).get(cc) or {}).get("induty_code", "")
             stale_parse = bool(hit and hit.get("fin") and hit["fin"].get("v") != FIN_VER)
-            if hit and not stale_parse and (now - datetime.fromisoformat(hit["fetched_at"])).days < ttl:
+            age = (now - datetime.fromisoformat(hit["fetched_at"])).days if hit else 999
+            old_period = bool(newest and hit and (hit.get("fin") or {}).get("period") != newest and age >= 3)
+            if old_period:
+                behind += 1
+            if hit and not stale_parse and not old_period and age < ttl:
                 continue
             if fetched >= cap:
                 skipped += 1
@@ -568,7 +576,7 @@ def update_financials(universe: dict, infos: dict | None = None) -> dict:
     save_json(cache_path, cache)
     if skipped:
         warn(f"재무 미수집 {skipped}개사 — 다음 실행에서 이어서 수집합니다.")
-    log(f"재무 신규 수집 {fetched}개사")
+    log(f"재무 신규 수집 {fetched}개사 (최신 보고서 {newest} 아님 → 재확인 대상 {behind}개사)")
     return {cc: (cache.get(cc) or {}).get("fin") for cc in universe}
 
 
