@@ -2051,7 +2051,9 @@ async function mpOpen() {
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(MP.map);
   MP.layer = L.layerGroup().addTo(MP.map);
   MP.map.on("click", e => mpGo([e.latlng.lat, e.latlng.lng], "지도에서 고른 곳", false));
-  MP.map.on("moveend", () => mpRender());          // 확대·축소·이동하면 보이는 영역 기준으로 다시 그림
+  // 확대·축소·이동하면 보이는 영역 기준으로 다시 그림 — 단, 팝업이 열리며 지도가 자동으로 밀린 경우는 제외
+  MP.map.on("moveend", () => { if (Date.now() - (MP.popT || 0) > 700) mpRender(); });
+  MP.map.on("popupopen", () => { MP.popT = Date.now(); });
   MP.map.on("popupopen", e => { const a = e.popup.getElement()?.querySelector("[data-co]"); if (a) a.onclick = ev => { ev.preventDefault(); const cc = a.dataset.co; CO_BY_CODE[cc] ??= mpInfo()[cc]?.co; openCompany(cc); }; });
   mpFit();
 }
@@ -2095,7 +2097,7 @@ function mpRender() {
   const top = new Set(labelOn ? draw.filter(x => x.o.grade !== "C").slice(0, 25).map(x => x.o.k) : []);
   const want = new Set(draw.map(x => x.o.k));
   // 화면에서 빠진 점만 지우고 새로 들어온 점만 추가 (열린 팝업이 닫히지 않게)
-  Object.keys(MP.markers).forEach(cc => { if (!want.has(cc) || MP.markers[cc]._lab !== top.has(cc) || MP.markers[cc]._f !== MP.f) { MP.layer.removeLayer(MP.markers[cc]); delete MP.markers[cc]; } });
+  Object.keys(MP.markers).forEach(cc => { if (MP.markers[cc].isPopupOpen()) return; if (!want.has(cc) || MP.markers[cc]._lab !== top.has(cc) || MP.markers[cc]._f !== MP.f) { MP.layer.removeLayer(MP.markers[cc]); delete MP.markers[cc]; } });
   draw.slice().reverse().forEach(({o}) => {
     if (MP.markers[o.k]) return;
     const big = o.grade !== "C";
@@ -2114,13 +2116,13 @@ function mpRender() {
 }
 function mpFocus(cc) {
   $$(".mp-it").forEach(x => x.classList.toggle("on", x.dataset.cc === cc));
-  const m = MP.markers[cc];
-  if (m && MP.map) {
-    if (innerWidth <= 900) $("#mp-map").scrollIntoView({behavior: "smooth", block: "center"});
-    MP.hold = true;
-    MP.map.once("moveend", () => setTimeout(() => { MP.markers[cc]?.openPopup(); $$(".mp-it").forEach(x => x.classList.toggle("on", x.dataset.cc === cc)); }, 50));
-    MP.map.setView(m.getLatLng(), Math.max(MP.map.getZoom(), 16));
-  }
+  const o = mpInfo()[cc];
+  if (!o || !MP.map) return;
+  if (innerWidth <= 900) $("#mp-map").scrollIntoView({behavior: "smooth", block: "center"});
+  // 점이 아직 화면 밖이면(모바일처럼 지도가 좁을 때) 좌표로 이동한 뒤, 다시 그려진 점에서 팝업을 연다
+  MP.hold = true;
+  MP.map.once("moveend", () => setTimeout(() => { MP.markers[cc]?.openPopup(); $$(".mp-it").forEach(x => x.classList.toggle("on", x.dataset.cc === cc)); }, 50));
+  MP.map.setView([o.p.lat, o.p.lng], Math.max(MP.map.getZoom(), 16), {animate: false});
 }
 async function mpSearch() {
   const q = $("#mp-q").value.trim();
