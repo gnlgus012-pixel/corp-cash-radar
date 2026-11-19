@@ -571,7 +571,7 @@ tbody tr.click:hover{background:var(--surface-2)}
       <select id="s-seg"><option value="">모든 자금 성격</option></select>
       <label>최소 점수 <input type="range" id="s-min" min="0" max="90" step="10" value="0"> <b id="s-min-v">0</b></label>
       <label><input type="checkbox" id="s-fin"> 재무 확보 법인만</label>
-      <label><input type="checkbox" id="s-watch"> 관심법인만</label>
+      <label id="s-watch-l" hidden><input type="checkbox" id="s-watch"> 관심법인만</label>
       <input type="text" id="s-q" placeholder="법인명">
       <span class="count" id="sc-count"></span>
     </div>
@@ -588,18 +588,18 @@ tbody tr.click:hover{background:var(--surface-2)}
   <!-- 섭외 지도 -->
   <section class="tab" id="t-map">
     <h2>섭외 지도</h2>
-    <p class="sub">가는 곳을 고르면 그 근처 본사 법인을 섭외 우선순위대로 보여 줍니다. 여유자금 점수, 대주주 이슈(주식담보·락업 해제·자금 공시), 관심법인을 함께 봅니다.
+    <p class="sub">가는 곳을 고르면 그 근처 본사 법인을 섭외 우선순위대로 보여 줍니다. 대주주 이슈(주식담보·락업 해제·자금 공시)와 여유자금 점수를 함께 봅니다.
       <br><span class="meta">위치 = DART 기업개황의 본점 주소. 공장·지점이 아니라 본사 기준입니다. 주소로 정확히 못 찾은 법인은 동·구 중심에 '대략'으로 찍힙니다.</span></p>
     <div class="filters mp-bar">
       <input type="text" id="mp-q" placeholder="장소·역 이름 또는 법인명 (예: 서울역)">
       <button class="btn" id="mp-go">찾기</button>
       <button class="btn" id="mp-me" title="브라우저 위치 권한 필요">내 위치</button>
       <div class="seg-btns" id="mp-r"><button data-v="500">500m</button><button data-v="1000" class="on">1km</button><button data-v="2000">2km</button><button data-v="5000">5km</button></div>
-      <select id="mp-f"><option value="">모든 법인</option><option value="pri" selected>섭외 우선 (점수 60↑·대주주 이슈·관심)</option><option value="owner">대주주 이슈 있는 법인</option><option value="cash">여유자금 점수 60↑</option><option value="kis">한국투자증권 담보 법인</option></select>
+      <select id="mp-f"><option value="">모든 법인</option><option value="pri" selected>섭외 우선 (대주주 이슈·여유자금 60점↑)</option><option value="owner">대주주 이슈 있는 법인</option><option value="cash">여유자금 점수 60↑</option><option value="kis">한국투자증권 담보 법인</option></select>
     </div>
     <div class="mp-hubs" id="mp-hubs"></div>
     <div id="mp-results" class="mp-results"></div>
-    <div class="meta" style="margin:-4px 0 10px"><span class="mp-dot" style="background:#7c3aed"></span>관심법인 &nbsp; <span class="mp-dot" style="background:#e8590c"></span>대주주 이슈 (주식담보·6개월 내 락업 해제·90일 내 자금 공시) &nbsp; <span class="mp-dot" style="background:#1f6feb"></span>여유자금 60점↑ &nbsp; <span class="mp-dot" style="background:#8a94a6"></span>기타 &nbsp; · 흐린 점 = 위치 대략 · 지도를 누르면 그곳이 기준점</div>
+    <div class="meta" style="margin:-4px 0 10px"><span class="mp-watch-lg" hidden><span class="mp-dot" style="background:#7c3aed"></span>관심법인 &nbsp; </span><span class="mp-dot" style="background:#e8590c"></span>대주주 이슈 (주식담보·6개월 내 락업 해제·90일 내 자금 공시) &nbsp; <span class="mp-dot" style="background:#1f6feb"></span>여유자금 60점↑ &nbsp; <span class="mp-dot" style="background:#8a94a6"></span>기타 &nbsp; · 흐린 점 = 위치 대략 · 지도를 누르면 그곳이 기준점</div>
     <div class="mp-wrap">
       <div id="mp-map" class="card"><div class="meta" style="padding:20px">지도를 불러오는 중…</div></div>
       <div class="mp-side card"><div class="mp-head"><b id="mp-place">서울역</b> <span class="meta" id="mp-count"></span></div><div id="mp-list"></div></div>
@@ -1632,6 +1632,7 @@ function drawCalChart() {
 
 /* ── 스크리너 ── */
 function initScreen() {
+  $("#s-watch-l").hidden = !D.companies.some(c => c.watch);   // 관심법인(config/watchlist.csv)이 없으면 숨김
   $("#s-seg").innerHTML += D.segments.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
   const s = st.sc;
   $("#s-mkt").onchange = e => { s.mkt = e.target.value; renderScreen(); };
@@ -1968,6 +1969,7 @@ function initMap() {
       () => alertMsg("위치 권한이 없어 현재 위치를 쓸 수 없습니다. 장소 이름으로 찾아 주세요."), {timeout: 8000});
   };
   $("#mp-list").onclick = e => { const it = e.target.closest(".mp-it"); if (it) mpFocus(it.dataset.cc); };
+  if ((RAW || D).companies.some(c => c.watch)) $(".mp-watch-lg").hidden = false;   // config/watchlist.csv 에 등록된 법인이 있을 때만
   const st = (RAW || D).geo?.stats;
   $("#mp-foot").textContent = st ? `위치 확보 ${st.located.toLocaleString()} / ${st.corps.toLocaleString()}개사 (건물 단위 ${(st.by_level["1"] || 0).toLocaleString()} · 동 ${(st.by_level["2"] || 0).toLocaleString()} · 구 ${(st.by_level["3"] || 0).toLocaleString()})${st.pending ? ` · 아직 못 찾은 ${st.pending.toLocaleString()}개사는 다음 갱신 때 채워집니다` : ""} · 지도 © OpenStreetMap` : "";
 }
@@ -2009,7 +2011,7 @@ function mpRender(fit) {
   MP.ring = L.circle(MP.center, {radius: MP.r, color: "#1f6feb", weight: 1, fillOpacity: 0.04}).addTo(MP.layer);
   MP.pin = L.circleMarker(MP.center, {radius: 6, color: "#fff", weight: 2, fillColor: "#0f1b2d", fillOpacity: 1}).addTo(MP.layer).bindTooltip(esc(MP.place));
   near.slice().reverse().forEach(({o}) => {
-    const m = L.circleMarker([o.p.lat, o.p.lng], {radius: o.owner || o.co?.watch ? 8 : 6, color: "#fff", weight: 1.5,
+    const m = L.circleMarker([o.p.lat, o.p.lng], {radius: o.owner || o.co?.watch || (o.score || 0) >= 60 ? 8 : 6, color: "#fff", weight: 1.5,
       fillColor: mpColor(o), fillOpacity: o.p.lv > 1 ? 0.55 : 0.9, dashArray: o.p.lv > 1 ? "2 2" : null}).addTo(MP.layer);
     m.bindPopup(() => mpPopup(o), {maxWidth: 320}).bindTooltip(esc(o.p.n), {direction: "top", offset: [0, -6]});
     m.on("click", () => $$(".mp-it").forEach(x => x.classList.toggle("on", x.dataset.cc === o.cc)));
