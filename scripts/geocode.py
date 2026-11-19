@@ -147,12 +147,77 @@ def inside_korea(lat, lng) -> bool:
     return 33.0 <= lat <= 38.7 and 124.5 <= lng <= 131.0
 
 
+# ───────── 수도권 사무소: 본점(등기)이 지방인데 실제 본사·사무소가 서울·경기에 있는 법인 ─────────
+OFFICE_PATH = C.CACHE_DIR / "offices.json"
+OFFICE_VER = 1
+OFFICE_TTL_DAYS = 60
+CAPITAL_RX = re.compile(r"^(서울|경기|인천)")
+OFFICE_CAT_OK = re.compile(r"회사|기업|사무실|연구소|건설업|제조업|제약|IT|금융|공공기관")
+OFFICE_NAME_BAD = re.compile(r"대리점|매장|판매점|직영점|서비스센터|물류센터|창고|공장|주유소|충전소|ATM|지점$|영업소|출장소|교육원|연수원|기숙사|어린이집")
+
+
+def nm(s: str) -> str:
+    return re.sub(r"\(주\)|㈜|주식회사|\s+", "", s or "")
+
+
+def kakao_keyword(q: str) -> list:
+    STATS["kakao_kw_calls"] += 1
+    try:
+        r = C.http_get("https://dapi.kakao.com/v2/local/search/keyword.json", params={"query": q, "size": 15},
+                       headers={"Authorization": f"KakaoAK {KAKAO_KEY}"})
+        if r.status_code != 200:
+            STATS[f"kakao_kw_http_{r.status_code}"] += 1
+            return []
+        return r.json().get("documents") or []
+    except Exception:  # noqa: BLE001
+        STATS["kakao_kw_err"] += 1
+        return []
+
+
+def find_offices(name: str, home: tuple | None) -> list:
+    """카카오 장소 검색으로 '법인명' 또는 '법인명 ○○' 이름의 수도권 회사 장소를 찾는다 (등기 본점과 5km 넘게 떨어진 곳만)"""
+    n0 = nm(name)
+    out = []
+    for d in kakao_keyword(name):
+        pn = d.get("place_name") or ""
+        # 이름이 정확히 같거나 '법인명 + 공백/괄호'로 시작해야 함 ('SK' 가 'SK텔레콤' 에 걸리지 않게)
+        if not (nm(pn) == n0 or re.match(re.escape(name) + r"[\s(]", pn) or re.match(re.escape(n0) + r"[\s(]", pn)):
+            continue
+        addr = d.get("road_address_name") or d.get("address_name") or ""
+        if not CAPITAL_RX.match(addr) or OFFICE_NAME_BAD.search(pn) or not OFFICE_CAT_OK.search(d.get("category_name") or ""):
+            continue
+        lat, lng = round(float(d["y"]), 6), round(float(d["x"]), 6)
+        if home and _km(home, (lat, lng)) < 5:
+            continue
+        if any(_km((o["lat"], o["lng"]), (lat, lng)) < 0.3 for o in out):
+            continue
+        out.append({"pn": pn, "a": addr, "lat": lat, "lng": lng, "cat": (d.get("category_name") or "").split(" > ")[-1]})
+    return out[:3]
+
+
+def _km(a, b) -> float:
+    import math
+    r = math.pi / 180
+    h = math.sin((b[0] - a[0]) * r / 2) ** 2 + math.cos(a[0] * r) * math.cos(b[0] * r) * math.sin((b[1] - a[1]) * r / 2) ** 2
+    return 12742 * math.asin(math.sqrt(h))
+
+
+def phone_area(phones: list) -> str | None:
+    """대표·공시담당자 전화 지역번호로 본 수도권 거점 (02 서울, 031 경기, 032 인천)"""
+    for ph in phones or []:
+        m = re.match(r"\(?0(2|31|32)\)?[-\s)]", ph.strip())
+        if m:
+            return {"2": "서울", "31": "경기", "32": "인천"}[m.group(1)]
+    return None
+
+
 def collect_corps(data: dict) -> dict:
     """corp_code → {name, cls, stock_code, addr}"""
     out = {}
     for c in data.get("companies") or []:
         out[c["corp_code"]] = {"name": c["name"], "stock_code": c.get("stock_code"),
-                               "addr": (c.get("info") or {}).get("addr")}
+                               "addr": (c.get("info") or {}).get("addr"),
+                               "phones": [x for x in ((c.get("info") or {}).get("phone"), (c.get("contact") or {}).get("phone")) if x]}
     extra = {}
     for sec in ("holders", "lockup", "pledge"):
         for i in (data.get(sec) or {}).get("items") or []:
@@ -222,17 +287,47 @@ def main() -> int:
         C.warn("시간 제한으로 지도 좌표 찾기를 중간에 멈췄습니다 — 다음 실행에서 이어서 찾습니다.")
     C.save_json(GEO_PATH, cache)
 
+    # 수도권 사무소 (카카오 키가 있을 때만): 본점이 서울·경기·인천 밖인 법인
+    offices = C.load_json(OFFICE_PATH, {})
+    if KAKAO_KEY:
+        today = C.now_kst().date()
+        n_off = 0
+        try:
+            for cc, v in corps.items():
+                a = parts(v.get("addr") or "")["full"]
+                if not a or CAPITAL_RX.match(a) or not re.search(r"[가-힣]", a):
+                    continue
+                hit = offices.get(cc)
+                if hit and hit.get("v") == OFFICE_VER and (today - C.date.fromisoformat(hit["t"])).days < OFFICE_TTL_DAYS:
+                    continue
+                C.check_time()
+                g = cache.get(clean(v.get("addr") or "")) or {}
+                offices[cc] = {"v": OFFICE_VER, "t": today.isoformat(),
+                               "items": find_offices(v["name"], (g["lat"], g["lng"]) if "lat" in g else None)}
+                n_off += 1
+        except C.OutOfTime:
+            C.warn("시간 제한으로 수도권 사무소 찾기를 중간에 멈췄습니다 — 다음 실행에서 이어서 찾습니다.")
+        C.save_json(OFFICE_PATH, offices)
+        STATS["office_lookups"] = n_off
+
     pts = {}
     for cc, v in corps.items():
         g = cache.get(clean(v.get("addr") or ""))
         if g and "lat" in g:
             pts[cc] = {"n": v["name"], "s": v.get("stock_code") or "", "a": clean(v["addr"]),
                        "lat": g["lat"], "lng": g["lng"], "lv": g["lv"]}
+            o = (offices.get(cc) or {}).get("items")
+            if o:
+                pts[cc]["o"] = o
+            pa = phone_area(v.get("phones"))
+            if pa and not CAPITAL_RX.match(parts(v["addr"])["full"]):
+                pts[cc]["ph"] = pa      # 본점은 지방인데 대표·공시담당 전화가 수도권 번호
     lvc = Counter(p["lv"] for p in pts.values())
     stats = {"corps": len(corps), "located": len(pts), "by_level": {str(k): v for k, v in sorted(lvc.items())},
              "no_addr": sum(1 for v in corps.values() if not v.get("addr")),
              "miss": sum(1 for v in corps.values() if (cache.get(clean(v.get("addr") or "")) or {}).get("miss")),
-             "pending": STATS["pending"], "new": new, "src": "kakao" if KAKAO_KEY else "osm"}
+             "pending": STATS["pending"], "new": new, "src": "kakao" if KAKAO_KEY else "osm",
+             "offices": sum(1 for p in pts.values() if p.get("o")), "phone_capital": sum(1 for p in pts.values() if p.get("ph"))}
     data["geo"] = {"corps": pts, "stats": stats}
     C.OUT_PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     C.save_json(C.ROOT / "reports" / "geo_status.json",   # 공개용: 건수만

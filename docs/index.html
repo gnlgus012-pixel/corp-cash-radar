@@ -614,11 +614,11 @@ tbody tr.click:hover{background:var(--surface-2)}
     <p class="sub">가는 곳을 고르면 그 근처 본사 법인을 섭외 우선순위대로 보여 줍니다. 대주주 이슈(주식담보·락업 해제·자금 공시)와 여유자금 점수를 함께 봅니다.
       <br><span class="meta">위치 = DART 기업개황의 본점 주소. 공장·지점이 아니라 본사 기준입니다. 주소로 정확히 못 찾은 법인은 동·구 중심에 '대략'으로 찍힙니다.</span></p>
     <div class="filters mp-bar">
-      <input type="text" id="mp-q" placeholder="장소·역·법인명 (예: 서울역)">
+      <input type="text" id="mp-q" placeholder="장소·역·법인명 (예: 여의도역)">
       <button class="btn" id="mp-go">찾기</button>
       <button class="btn" id="mp-me" title="브라우저 위치 권한 필요">내 위치</button>
       <div class="seg-btns" id="mp-r"><button data-v="500">500m</button><button data-v="1000" class="on">1km</button><button data-v="2000">2km</button><button data-v="5000">5km</button></div>
-      <select id="mp-f"><option value="">모든 법인</option><option value="pri" selected>섭외 대상 (A·B등급)</option><option value="A">A등급만 (지금 갈 이유 있음)</option><option value="owner">대주주 이슈 있는 법인</option><option value="cash">여유자금 60점↑</option><option value="kis">한투가 담보권자인 법인</option></select>
+      <select id="mp-f"><option value="" selected>모든 법인</option><option value="pri">섭외 대상 (A·B등급)</option><option value="A">A등급만 (지금 갈 이유 있음)</option><option value="owner">대주주 이슈 있는 법인</option><option value="cash">여유자금 60점↑</option><option value="kis">한투가 담보권자인 법인</option></select>
     </div>
     <div class="mp-hubs" id="mp-hubs"></div>
     <div id="mp-results" class="mp-results"></div>
@@ -626,7 +626,7 @@ tbody tr.click:hover{background:var(--surface-2)}
       <br>점 색: <span class="mp-watch-lg" hidden><span class="mp-dot" style="background:#7c3aed"></span>관심법인 &nbsp; </span><span class="mp-dot" style="background:#e8590c"></span>대주주 이슈 &nbsp; <span class="mp-dot" style="background:#1f6feb"></span>여유자금 60점↑ &nbsp; <span class="mp-dot" style="background:#8a94a6"></span>기타 · 흐린 점 = 위치 대략 · 지도를 옮기거나 확대·축소하면 그 화면 안 법인으로 바뀝니다 · 지도를 누르면 그곳이 거리 기준점</div>
     <div class="mp-wrap">
       <div id="mp-map" class="card"><div class="meta" style="padding:20px">지도를 불러오는 중…</div></div>
-      <div class="mp-side card"><div class="mp-head"><b id="mp-place">서울역</b> <span class="meta" id="mp-count"></span></div><div id="mp-list"></div></div>
+      <div class="mp-side card"><div class="mp-head"><b id="mp-place">여의도</b> <span class="meta" id="mp-count"></span></div><div id="mp-list"></div></div>
     </div>
     <p class="meta" id="mp-hint" style="margin-top:8px;color:var(--accent)"></p>
     <p class="meta" id="mp-foot" style="margin-top:4px"></p>
@@ -1904,7 +1904,7 @@ function renderIssues() {
 const MP_HUBS = [["서울역", 37.5547, 126.9707], ["광화문", 37.5710, 126.9768], ["을지로입구", 37.5660, 126.9822], ["여의도", 37.5216, 126.9243],
   ["강남역", 37.4979, 127.0276], ["삼성역", 37.5089, 127.0631], ["판교", 37.3948, 127.1112], ["성수", 37.5445, 127.0557],
   ["마곡", 37.5602, 126.8254], ["가산디지털단지", 37.4815, 126.8826], ["구로디지털단지", 37.4852, 126.9015], ["송도", 37.3925, 126.6391]];
-const MP = {map: null, L: null, center: [37.5547, 126.9707], place: "서울역", r: 1000, f: "pri", markers: {}, layer: null, pin: null, info: null, loading: null};
+const MP = {map: null, L: null, center: [37.5216, 126.9243], place: "여의도", r: 1000, f: "", markers: {}, layer: null, pin: null, info: null, loading: null};
 const MP_LABEL_ZOOM = 15;        // 이 배율 이상이면 점 위에 법인명 상시 표시
 const MP_MAX_PTS = 600;          // 화면에 한 번에 그리는 점 수 상한 (등급·우선순위 높은 순)
 const KM = (a, b) => {   // 두 점 사이 거리 (m)
