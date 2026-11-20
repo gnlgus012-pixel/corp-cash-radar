@@ -1992,6 +1992,7 @@ const SITE_T = {"사무소": {c: "#6b3fd4", l: "사무소"}, "연구소": {c: "#
 const siteT = f => SITE_T[f?.t || "사무소"];
 function mpPass(o) {
   const f = MP.f;
+  if (o.k === MP.pinned) return true;   // 검색으로 고른 법인
   if (!f) return true;
   if (f === "hq") return !o.off;
   if (f === "fac") return o.off?.t === "공장";
@@ -2164,6 +2165,7 @@ function mpFit() {   // 기준점 + 반경이 화면에 꽉 차게
   mpRender();
 }
 function mpGo(c, name, fit = true) {
+  if (MP.pinned && !name.startsWith(mpInfo()[MP.pinned]?.p.n || "\u0000")) MP.pinned = null;
   MP.center = c; MP.place = name;
   $$("#mp-hubs button").forEach(b => b.classList.toggle("on", b.dataset.n === name));
   $("#mp-results").classList.remove("on");
@@ -2176,7 +2178,7 @@ function mpRender() {
   const inView = o => bb ? bb.contains([o.p.lat, o.p.lng]) : KM(MP.center, [o.p.lat, o.p.lng]) <= MP.r;
   const vis = Object.values(I).filter(inView);
   const near = vis.filter(mpPass).map(o => ({o, d: KM(MP.center, [o.p.lat, o.p.lng])}))
-    .sort((a, b) => b.o.rank - a.o.rank || a.d - b.d);
+    .sort((a, b) => (b.o.k === MP.pinned) - (a.o.k === MP.pinned) || b.o.rank - a.o.rank || a.d - b.d);
   const gc = {A: 0, B: 0, C: 0}; near.forEach(x => gc[x.o.grade]++);
   $("#mp-place").textContent = MP.place;
   if (MP.hold) { MP.hold = false; } else {   // 목록에서 법인을 눌러 지도가 움직인 경우엔 목록을 그대로 둔다
@@ -2194,6 +2196,7 @@ function mpRender() {
   // 이름표는 확대했을 때(또는 점이 적을 때) 우선순위 높은 25곳만 상시 표시 — 나머지는 마우스를 올리면
   const labelOn = z >= MP_LABEL_ZOOM || draw.length <= 40;
   const top = new Set(labelOn ? draw.filter(x => x.o.grade !== "C").slice(0, 25).map(x => x.o.k) : []);
+  if (MP.pinned && draw.some(x => x.o.k === MP.pinned)) top.add(MP.pinned);
   const want = new Set(draw.map(x => x.o.k));
   // 화면에서 빠진 점만 지우고 새로 들어온 점만 추가 (열린 팝업이 닫히지 않게)
   Object.keys(MP.markers).forEach(cc => { if (MP.markers[cc].isPopupOpen()) return; if (!want.has(cc) || MP.markers[cc]._lab !== top.has(cc) || MP.markers[cc]._f !== MP.f) { MP.layer.removeLayer(MP.markers[cc]); delete MP.markers[cc]; } });
@@ -2226,28 +2229,40 @@ function mpFocus(cc) {
   MP.map.setView([o.p.lat, o.p.lng], Math.max(MP.map.getZoom(), 16), {animate: false});
 }
 async function mpSearch() {
-  const q = $("#mp-q").value.trim();
-  if (!q) return;
+  const raw = $("#mp-q").value.trim();
+  if (!raw) return;
+  // '메디톡스 본사', '휴젤 서울사무소' 처럼 붙여 써도 법인을 찾도록 꼬리말을 떼고 비교
+  const q = raw.replace(/\s*(본사|본점|사옥|서울\s*사무소|사무소|사무실|지사|공장|연구소|오피스)$/, "").trim() || raw;
   const box = $("#mp-results");
   const I = mpInfo();
-  const cos = Object.values(I).filter(o => o.p.n.includes(q)).slice(0, 5);
-  const hub = MP_HUBS.find(h => h[0] === q || h[0].replace("역", "") === q.replace("역", ""));
+  const qn = q.replace(/\s/g, "");
+  const cos = Object.values(I).filter(o => o.p.n.replace(/\s/g, "").includes(qn))
+    .sort((a, b) => (a.p.n.length - b.p.n.length) || ((a.off ? 1 : 0) - (b.off ? 1 : 0))).slice(0, 8);
+  const hub = MP_HUBS.find(h => h[0] === raw || h[0].replace("역", "") === raw.replace("역", ""));
   if (hub) return mpGo([hub[1], hub[2]], hub[0]);
   let places = [];
   box.innerHTML = '<span class="meta">찾는 중…</span>'; box.classList.add("on");
-  try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=kr&accept-language=ko&q=${encodeURIComponent(q)}`);
-    places = r.ok ? await r.json() : [];
-  } catch (e) { places = []; }
-  const btn = (lat, lng, name, sub) => `<button data-lat="${lat}" data-lng="${lng}" data-n="${esc(name)}"><b>${esc(name)}</b> <span class="meta">${esc(sub)}</span></button>`;
-  const html = cos.map(o => btn(o.p.lat, o.p.lng, o.p.n, "법인 · " + o.p.a.slice(0, 24)))
-    .concat(places.map(p => btn(p.lat, p.lon, p.name || q, (p.display_name || "").split(",").slice(1, 4).join(",")))).join("");
+  if (!cos.length) {   // 법인으로 못 찾을 때만 장소 검색
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=kr&accept-language=ko&q=${encodeURIComponent(raw)}`);
+      places = r.ok ? await r.json() : [];
+    } catch (e) { places = []; }
+  }
+  const kind = o => o.off ? `<span style="color:${siteT(o.off).c};font-weight:700">[${siteT(o.off).l}]</span> ${esc(o.off.pn)}` : '<span style="font-weight:700">[DART 본점]</span>';
+  const html = cos.map(o => `<button data-k="${esc(o.k)}"><b>${esc(o.p.n)}</b> ${kind(o)} <span class="meta">${esc(o.p.a.slice(0, 26))}</span></button>`)
+    .concat(places.map(p => `<button data-lat="${p.lat}" data-lng="${p.lon}" data-n="${esc(p.name || raw)}"><b>${esc(p.name || raw)}</b> <span class="meta">${esc((p.display_name || "").split(",").slice(1, 4).join(","))}</span></button>`)).join("");
   box.innerHTML = html || '<span class="meta">찾지 못했습니다. 역·건물·동 이름으로 다시 찾거나, 지도를 직접 눌러 기준점을 정해 주세요.</span>';
   $$("#mp-results button").forEach(b => b.onclick = () => {
-    const c = [+b.dataset.lat, +b.dataset.lng];
-    mpGo(c, b.dataset.n);
-    const hit = Object.values(I).find(o => o.p.n === b.dataset.n && o.p.lat === c[0]);
-    if (hit) setTimeout(() => mpFocus(hit.k), 400);
+    if (b.dataset.k) {
+      // 검색으로 고른 법인은 필터(A등급만 등)와 상관없이 항상 보이게
+      const o = I[b.dataset.k];
+      MP.pinned = o.k;
+      mpGo([o.p.lat, o.p.lng], o.p.n + (o.off ? ` (${siteT(o.off).l})` : ""));
+      setTimeout(() => mpFocus(o.k), 400);
+    } else {
+      MP.pinned = null;
+      mpGo([+b.dataset.lat, +b.dataset.lng], b.dataset.n);
+    }
   });
   if (cos.length + places.length === 1) $("#mp-results button").click();
 }
