@@ -1689,7 +1689,7 @@ const SC_COLS = [
   {k: "name", l: "법인", v: c => c.name},
   {k: "score", l: "점수", num: 1, v: c => c.score},
   {k: "segment", l: "자금 성격", v: c => c.segment},
-  {k: "cash", l: "현금성자산", num: 1, v: c => c.metrics?.cash_total, tip: "현금성자산 = 현금및현금성자산 + 단기금융상품 (점수 25점 기준)"},
+  {k: "cash", l: "현금성자산", num: 1, v: c => c.financial ? null : c.metrics?.cash_total, /* 금융회사는 고객 예치금이 섞여 비교 불가 → 정렬 맨 뒤 */ tip: "현금성자산 = 현금및현금성자산 + 단기금융상품 (점수 25점 기준)"},
   {k: "net", l: "순현금 ⓘ", num: 1, v: c => c.metrics?.net_cash, tip: "순현금 = 현금성자산(현금 + 단기금융상품) − 차입금·사채. 재무 체력 참고용이며, 회사마다 차입금 표기가 달라 오차가 있을 수 있어 점수에는 반영하지 않음"},
   {k: "ratio", l: "현금/자산", num: 1, v: c => c.metrics?.cash_ratio, m: 1},
   {k: "growth", l: "현금증감", num: 1, v: c => c.metrics?.cash_growth, m: 1},
@@ -1734,7 +1734,7 @@ function renderScreen() {
     return `<tr class="click" data-co="${esc(c.corp_code)}">
       <td><b>${esc(c.name)}</b> ${c.watch ? '<span class="tag gray">관심</span>' : ""}${c.financial ? '<span class="tag gray" title="금융회사: 예수·차입이 영업 자체라 순현금·현금비중 점수 미적용">금융</span>' : ""}<div class="sub" style="margin:0">${esc(c.market_label)}${c.stock_code ? " · " + esc(c.stock_code) : ""}</div></td>
       <td class="num">${scoreCell(c.score)}</td><td>${segTag(c.segment)}</td>
-      <td class="num">${m ? eok(m.cash_total) : why(c, "why")}</td>
+      <td class="num">${c.financial && m ? `<span class="meta" title="은행·증권·보험 등 금융회사의 현금성자산에는 고객 예치금·지급준비금·운용자산이 섞여 있어 일반 법인의 여유자금과 비교할 수 없습니다 (장부 숫자 ${eok(m.cash_total)})">금융업 · 비교 제외</span>` : m ? eok(m.cash_total) : why(c, "why")}</td>
       <td class="num" style="color:${rawNet(c) < 0 ? "var(--out)" : "inherit"}">${
         ["nofin", "fin", "noassets"].includes(whyCode(c)) || rawNet(c) == null ? why(c, "why") || "-"
         : eok(rawNet(c)) + (["borrow", "dup", "unit"].includes(whyCode(c)) ? why(c) : chk(c))}</td>
