@@ -268,9 +268,15 @@ tbody tr.click:hover{background:var(--surface-2)}
 .points li{margin:4px 0}
 .chartbox{position:relative}
 .chartbox svg{display:block;width:100%;height:auto}
-.regionbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin:0 0 10px}
-.regionbar select{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:13px}
-.regionbar.on select{border-color:var(--accent);color:var(--accent);font-weight:600}
+.regionbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px;color:var(--ink);margin:0 0 12px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.regionbar .rg-lab{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:var(--accent)}
+.regionbar select{padding:6px 10px;border:1.5px solid var(--accent);border-radius:8px;background:var(--surface);color:var(--ink);font-size:14px;font-weight:600;cursor:pointer}
+.regionbar #rg-note{color:var(--ink-2);font-size:12.5px}
+.regionbar.on{background:#fff4e6;border-color:#f08c00}
+.regionbar.on .rg-lab{color:#d9480f}
+.regionbar.on select{border-color:#f08c00;color:#d9480f}
+.regionbar.on #rg-note{color:#d9480f;font-weight:600}
+.rg-reset{margin-left:auto;border:0;background:#d9480f;color:#fff;border-radius:8px;padding:6px 12px;font-weight:600;cursor:pointer}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--ink-2);margin-bottom:6px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 @media (max-width:640px){.hide-m{display:none}.search input{width:150px}}
@@ -413,9 +419,10 @@ tbody tr.click:hover{background:var(--surface-2)}
 </header>
 
 <main>
-  <div class="regionbar" id="regionBar" title="본점 소재지 기준. 모든 탭(브리핑·자금 동향·대주주·여유자금 법인·자금 성격별)에 적용되고 이 기기에 기억됩니다">
-    <span>담당 지역</span><select id="rg-sido"><option value="">전국</option></select><select id="rg-sgg" hidden><option value="">전체</option></select>
-    <span class="meta" id="rg-note"></span>
+  <div class="regionbar" id="regionBar" title="본점 소재지 기준. 모든 탭(브리핑·자금 동향·대주주·만기 캘린더·여유자금 법인)에 적용. 사이트를 새로 열면 항상 전국으로 시작합니다">
+    <span class="rg-lab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>담당 지역</span>
+    <select id="rg-sido"><option value="">전국</option></select><select id="rg-sgg" hidden><option value="">전체</option></select>
+    <span id="rg-note"></span><button class="rg-reset" id="rg-reset" hidden>전국으로 보기</button>
   </div>
   <div id="banners"></div>
 
@@ -959,7 +966,9 @@ function regionOf(addr) {
   return {sido: hit[0], sgg: hit[0] === "세종" ? "" : (m ? m[1] : "")};
 }
 const RG_KEY = "radar-region";
-function loadRegion() { try { return JSON.parse(localStorage.getItem(RG_KEY) || "null") || {}; } catch(e) { return {}; } }
+// 담당 지역은 이 창(탭)에서만 유지 — 사이트를 새로 열면 항상 전국. 예전에 기기에 저장된 값은 지움
+try { localStorage.removeItem(RG_KEY); } catch(e) {}
+function loadRegion() { try { return JSON.parse(sessionStorage.getItem(RG_KEY) || "null") || {}; } catch(e) { return {}; } }
 function applyRegion(data) {
   const R = loadRegion();
   const reg = {};
@@ -978,7 +987,7 @@ function applyRegion(data) {
   };
   fillSgg(R.sido);
   $("#rg-sgg").value = R.sgg || "";
-  const save = v => { try { localStorage.setItem(RG_KEY, JSON.stringify(v)); } catch(e) {} location.reload(); };
+  const save = v => { try { sessionStorage.setItem(RG_KEY, JSON.stringify(v)); } catch(e) {} location.reload(); };
   $("#rg-sido").onchange = e => save({sido: e.target.value, sgg: ""});
   $("#rg-sgg").onchange = e => save({sido: R.sido, sgg: e.target.value});
   if (!R.sido) return data;
@@ -989,7 +998,9 @@ function applyRegion(data) {
   if (data.calendar) out.calendar = {...data.calendar, items: data.calendar.items.filter(i => ok(i.corp_code))};
   if (data.pledge) out.pledge = {...data.pledge, items: data.pledge.items.filter(i => ok(i.corp_code))};
   $("#regionBar").classList.add("on");
-  $("#rg-note").textContent = `${R.sgg ? R.sido + " " + R.sgg : R.sido} 법인 ${out.companies.length.toLocaleString()}개사만 표시 · 비상장 등 주소 미확보 법인은 제외`;
+  $("#rg-note").textContent = `${R.sgg ? R.sido + " " + R.sgg : R.sido} 법인 ${out.companies.length.toLocaleString()}개사만 보는 중 (전국 ${data.companies.length.toLocaleString()}개사)`;
+  $("#rg-reset").hidden = false;
+  $("#rg-reset").onclick = () => save({});
   return out;
 }
 
@@ -1724,7 +1735,7 @@ function renderScreen() {
     Object.assign(s, {mkt: "", seg: "", min: 0, fin: false, watch: false, q: ""});
     $("#s-mkt").value = ""; $("#s-seg").value = ""; $("#s-min").value = 0; $("#s-min-v").textContent = "0"; $("#s-fin").checked = false; $("#s-q").value = "";
     if ($("#s-watch")) $("#s-watch").checked = false;
-    if (R.sido) { try { localStorage.setItem(RG_KEY, JSON.stringify({})); } catch (x) {} location.reload(); return; }
+    if (R.sido) { try { sessionStorage.setItem(RG_KEY, JSON.stringify({})); } catch (x) {} location.reload(); return; }
     renderScreen();
   };
   $$("#segchips .segchip").forEach(b => b.classList.toggle("on", b.dataset.seg === s.seg));
