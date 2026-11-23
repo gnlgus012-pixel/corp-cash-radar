@@ -1,0 +1,27 @@
+name: 기업 관계도 시험 (수동)
+on:
+  workflow_dispatch:
+    inputs:
+      corps:
+        description: "DART 고유번호(쉼표로 구분)"
+        required: true
+        default: "00126380"
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt && mkdir -p cache
+      - name: 받아 보기 (결과는 암호화해서만 출력)
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          REL_CORPS: ${{ inputs.corps }}
+        run: python scripts/rel_probe.py
