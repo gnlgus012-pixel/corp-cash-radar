@@ -16,9 +16,10 @@ for cc in [x for x in os.environ.get("REL_CORPS", "").split(",") if x]:
     for ep in ("hyslrSttus", "otrCprInvstmntSttus"):
         for y, rc, lab in REPORTS:
             j = C.dart_get(f"{ep}.json", corp_code=cc, bsns_year=y, reprt_code=rc)
-            if j.get("status") == "000" and j.get("list"):
+            rows = [x for x in (j.get("list") or []) if ep != "otrCprInvstmntSttus" or (x.get("inv_prm") or "-") not in ("-", "합계")]
+            if j.get("status") == "000" and rows:   # 1·3분기 보고서의 타법인 출자는 '-' 빈 줄만 오는 경우가 있음 → 다음 보고서로
                 out[cc][ep] = {"report": lab, "list": j["list"]}
-                C.log(f"{cc} {ep}: {lab} {len(j['list'])}건")   # 건수만 공개
+                C.log(f"{cc} {ep}: {lab} {len(rows)}건")   # 건수만 공개
                 break
         else:
             C.log(f"{cc} {ep}: 없음")
