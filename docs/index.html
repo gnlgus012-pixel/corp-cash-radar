@@ -372,6 +372,7 @@ tbody tr.click:hover{background:var(--surface-2)}
 .mp-li-pt b{margin-right:4px}
 .mp-li-pt.hot b{color:#d6336c}
 .mp-pop details summary{cursor:pointer;color:var(--accent);font-size:12.5px}
+.lead{margin:-2px 0 6px;font-size:15px;color:var(--ink);font-weight:500}
 </style>
 </head>
 <body>
@@ -408,18 +409,18 @@ tbody tr.click:hover{background:var(--surface-2)}
     <button class="themebtn" onclick="radarLock()" title="잠금 (이 기기에 저장된 비밀번호 지우기)">🔒</button>
   </div>
   <nav id="nav">
-    <button data-tab="brief" class="on">브리핑</button>
-    <button data-tab="flow">자금 동향</button>
+    <button data-tab="brief" class="on">오늘 브리핑</button>
+    <button data-tab="flow">자금 공시</button>
     <button data-tab="owner">대주주(개인)</button>
-    <button data-tab="cal">만기 캘린더</button>
-    <button data-tab="screen">여유자금 법인</button>
+    <button data-tab="cal">만기 일정</button>
+    <button data-tab="screen">법인 스크리너</button>
     <button data-tab="map">섭외 지도</button>
-    <button data-tab="issue">주요 이슈</button>
+    <button data-tab="issue">뉴스</button>
   </nav>
 </header>
 
 <main>
-  <div class="regionbar" id="regionBar" title="본점 소재지 기준. 모든 탭(브리핑·자금 동향·대주주·만기 캘린더·여유자금 법인)에 적용. 사이트를 새로 열면 항상 전국으로 시작합니다">
+  <div class="regionbar" id="regionBar" title="본점 소재지 기준. 모든 탭(오늘 브리핑·자금 공시·대주주·만기 일정·법인 스크리너)에 적용. 사이트를 새로 열면 항상 전국으로 시작합니다">
     <span class="rg-lab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>담당 지역</span>
     <select id="rg-sido"><option value="">전국</option></select><select id="rg-sgg" hidden><option value="">전체</option></select>
     <span id="rg-note"></span><button class="rg-reset" id="rg-reset" hidden>전국으로 보기</button>
@@ -428,7 +429,8 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 브리핑 -->
   <section class="tab on" id="t-brief">
-    <h2>오늘의 브리핑</h2>
+    <h2>오늘의 섭외 브리핑</h2>
+    <p class="lead">오늘 연락할 만한 자금 유입·만기·신규 시그널을 한 장에</p>
     <p class="sub" id="brief-sub"></p>
     <div class="grid g4" id="kpis"></div>
     <div class="rates" id="rates"></div>
@@ -468,8 +470,9 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 자금 동향 -->
   <section class="tab" id="t-flow">
-    <h2>법인 자금 동향</h2>
-    <p class="sub">DART 공시 중 자금 유입·유출 이벤트 (유가·코스닥 + 관심법인)</p>
+    <h2>법인 자금 유입·유출 공시</h2>
+    <p class="lead">유상증자·메자닌·자산매각 등 DART 자금 공시 목록</p>
+    <p class="sub">유가·코스닥 상장사 기준. 금액·납입일은 공시 원문에서 읽은 값</p>
     <div class="grid g2" style="margin-bottom:14px">
       <div class="card">
         <h3 id="flowChartTitle">주간 공시 건수</h3>
@@ -507,8 +510,9 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 대주주(개인) -->
   <section class="tab" id="t-owner">
-    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button><button data-sub="pledge">주식담보</button></div>
-    <h2>대주주(개인) 자금 동향</h2>
+    <div class="subnav"><button data-sub="owner">지분 매각·증여</button><button data-sub="lock">락업 해제</button><button data-sub="pledge">주식담보</button></div>
+    <h2>대주주 개인 자금 이벤트</h2>
+    <p class="lead">지분 매각·증여·상속, 락업 해제, 주식담보</p>
     <p class="sub">최대주주와 특수관계인 <b>개인</b>의 지분 매각·매도 계획·경영권 양도·증여·상속·주식담보·배당 수령. 금액에 <span class="tag gray">추정</span>이 붙은 건은 원문에 단가가 없어 종가나 주당배당금으로 계산한 값입니다.</p>
     <div class="grid g4" id="ow-kpis" style="margin-bottom:14px"></div>
     <div class="filters">
@@ -531,7 +535,7 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 대주주 락업 해제 (대주주 탭 안의 하위 화면) -->
   <section class="tab" id="t-lock">
-    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button><button data-sub="pledge">주식담보</button></div>
+    <div class="subnav"><button data-sub="owner">지분 매각·증여</button><button data-sub="lock">락업 해제</button><button data-sub="pledge">주식담보</button></div>
     <h2>대주주 락업 해제 일정</h2>
     <p class="sub">IPO 증권신고서의 최대주주등 의무보유(매각제한) 표, 제3자배정 유상증자의 배정 대상자별 보호예수(락업)를 <b>사람별</b>로 모았습니다. 해제일부터 팔거나 담보로 쓸 수 있어 매각 자금·담보대출 수요가 생기는 시점입니다.
       <br><span class="meta">해제 예정일 = 상장일(상장 전이면 납입일+4일 추정)·신주 상장예정일 + 의무보유 기간. 평가액 = 주식수 × 최근 종가(상장 전은 공모가·발행가). 기간 연장·조기 해제·이미 판 주식은 반영되지 않으니 원문으로 확인하세요.</span></p>
@@ -555,7 +559,7 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 대주주 주식담보 (대주주 탭 안의 하위 화면) -->
   <section class="tab" id="t-pledge">
-    <div class="subnav"><button data-sub="owner">자금 공시</button><button data-sub="lock">락업 해제</button><button data-sub="pledge">주식담보</button></div>
+    <div class="subnav"><button data-sub="owner">지분 매각·증여</button><button data-sub="lock">락업 해제</button><button data-sub="pledge">주식담보</button></div>
     <h2>대주주 주식담보 현황</h2>
     <p class="sub">대주주·특수관계인이 지금 담보로 잡혀 있는 주식을 <b>사람별</b>로 모았습니다. 만기 전 대환·연장, 저축은행·캐피탈 고금리 담보의 증권사 대환 수요를 찾는 화면입니다.
       <br><span class="meta">출처 ① 5% 대량보유보고서의 '보유주식등에 관한 계약'(보고자·특별관계자 전원, 보고서마다 현재 유효한 계약 전체를 다시 적음 → 보고자별 최신 보고서 기준) ② 최대주주 변경을 수반하는 주식담보제공 계약 공시(차입·설정 금액) ③ 분기·반기·사업보고서 '주주에 관한 사항'의 담보 문구. 평가액 = 담보 주식수 × 최근 종가. 만기가 지난 계약은 뺐습니다.</span></p>
@@ -582,7 +586,8 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 만기 캘린더 -->
   <section class="tab" id="t-cal">
-    <h2>만기·상환 캘린더</h2>
+    <h2>만기·상환 일정</h2>
+    <p class="lead">회사채·메자닌·주식담보대출 만기가 언제 돌아오는지</p>
     <p class="sub">공모 회사채·메자닌(CB·BW·EB) 만기, 대주주 주식담보대출 만기, 금전대여 회수일. 만기 전 차환·상환 자금 준비, 상환 후 여유자금 운용 시점을 미리 잡습니다.
       <br><span class="meta">발행 당시 기준이라 조기상환·매입소각·전환으로 줄어든 잔액은 반영되지 않습니다. 사모 회사채·CP·전단채는 DART에 없어 제외됩니다.</span></p>
     <div class="grid g4" id="cal-kpis" style="margin-bottom:14px"></div>
@@ -610,7 +615,8 @@ tbody tr.click:hover{background:var(--surface-2)}
   <!-- 스크리너 -->
   <section class="tab" id="t-screen">
     <h2>여유자금 법인 스크리너</h2>
-    <p class="sub">현금성자산 총량(현금 + 단기금융상품)·현금/자산·현금증감·유입공시 각 25점, 100점 만점. 순현금은 참고용(점수 미반영). 행을 누르면 상세.</p>
+    <p class="lead">시장·자금 성격·점수·지역 조건으로 여유자금 많은 법인을 골라내고, 현금성자산·순현금 등으로 정렬</p>
+    <p class="sub">점수: 현금성자산 총량(현금 + 단기금융상품)·현금/자산·현금증감·유입공시 각 25점, 100점 만점. 순현금은 참고용(점수 미반영). 행을 누르면 상세.</p>
     <div class="segchips" id="segchips"></div>
     <div class="filters">
       <select id="s-mkt" title="스크리너는 재무를 확보한 상장사(유가·코스닥) 대상"><option value="">모든 시장</option><option value="Y">유가</option><option value="K">코스닥</option></select>
@@ -633,8 +639,9 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 섭외 지도 -->
   <section class="tab" id="t-map">
-    <h2>섭외 지도</h2>
-    <p class="sub">가는 곳을 고르면 그 근처 본사 법인을 섭외 우선순위대로 보여 줍니다. 대주주 이슈(주식담보·락업 해제·자금 공시)와 여유자금 점수를 함께 봅니다.
+    <h2>주변 섭외 법인 지도</h2>
+    <p class="lead">가는 곳 근처 법인을 섭외 우선순위대로</p>
+    <p class="sub">대주주 이슈(주식담보·락업 해제·자금 공시)와 여유자금 점수를 함께 봅니다.
       <br><span class="meta">위치 = DART 기업개황의 본점 주소. 공장·지점이 아니라 본사 기준입니다. 주소로 정확히 못 찾은 법인은 동·구 중심에 '대략'으로 찍힙니다.</span></p>
     <div class="filters mp-bar">
       <input type="text" id="mp-q" placeholder="장소·역·법인명 (예: 여의도역)">
@@ -658,7 +665,8 @@ tbody tr.click:hover{background:var(--surface-2)}
 
   <!-- 주요 이슈 -->
   <section class="tab" id="t-issue">
-    <h2>주요 이슈</h2>
+    <h2>키워드 뉴스</h2>
+    <p class="lead">관심 키워드별 최신 기사</p>
     <p class="sub" id="issue-sub">키워드별 최신 뉴스</p>
     <div class="chips" id="topicChips"></div>
     <div class="card"><div class="list" id="issueList"></div></div>
@@ -1126,7 +1134,7 @@ function renderBrief() {
       <div class="d">${typeTag(e.type)} ${esc(e.category)} · ${esc(e.detail.amount_label)} <b>${amtTxt(e.detail)}</b></div></div>
       <div class="r">${DART_LINK(e)}</div>
     </div>`).join("") || `<div class="empty">향후 30일 내 100억 이상 유입 일정이 없거나, 아직 공시 원문 수집 전입니다.</div>`;
-  if (big.length > 6) $("#bigIn").insertAdjacentHTML("beforeend", `<div class="meta" style="padding-top:8px">외 ${big.length - 6}건 — 자금 동향 탭 '자금 일정 기준'에서 전체 확인</div>`);
+  if (big.length > 6) $("#bigIn").insertAdjacentHTML("beforeend", `<div class="meta" style="padding-top:8px">외 ${big.length - 6}건 — 자금 공시 탭 '자금 일정 기준'에서 전체 확인</div>`);
   bindCo($("#bigIn"));
   // 대주주 주식담보대출 만기를 먼저(향후 90일, 날짜순) → 그 다음 회사채·메자닌(향후 30일, 금액순)
   const t90 = (() => { const d = new Date(); d.setDate(d.getDate() + 90); return d.toISOString().slice(0, 10); })();
