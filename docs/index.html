@@ -2314,7 +2314,7 @@ function bindCo(root) {
 }
 function openCompany(code) {
   const c = CO_BY_CODE[code];
-  if (!c) return;
+  if (!c) return openMini(code);
   const m = c.metrics, f = c.fin, sd = c.score_detail, W = {cash_total: 25, cash_ratio: 25, cash_growth: 25, inflow_event: 25};
   const SDL = {cash_total: "현금성자산", cash_ratio: "현금/자산", cash_growth: "현금 증감", inflow_event: "유입 공시"};
   const seg = D.segments.find(s => s.id === c.segment) || {};
@@ -2353,6 +2353,41 @@ function openCompany(code) {
       ${ownerCard(code)}
       <div class="card"><h3>관련 뉴스</h3>
         <div class="list">${(c.news || []).map(n => newsItem(n)).join("") || `<div class="sub" style="margin:0">수집된 기사가 없습니다 (점수 상위 법인만 수집).</div>`}</div></div>
+    </div>`;
+  $("#modal").classList.add("on");
+  document.body.style.overflow = "hidden";
+  history.replaceState(null, "", "#c=" + code);
+  $("#drawer .x").onclick = closeCompany;
+}
+// 분석 대상(상장사 재무 보유)이 아닌 법인 — 공모 중인 IPO 기업·비상장사 등. 공시·락업·대주주 정보만 보여 준다
+function openMini(code) {
+  const R = RAW || D;
+  const evs = (R.events || []).filter(e => e.corp_code === code).sort((a, b) => b.date.localeCompare(a.date));
+  const any = evs[0] || (R.lockup?.items || []).find(i => i.corp_code === code) || (R.holders?.items || []).find(i => i.corp_code === code)
+    || (R.pledge?.items || []).find(i => i.corp_code === code);
+  const g = R.geo?.corps?.[code];
+  const name = any?.corp_name || g?.n;
+  if (!name) return;
+  const ipo = evs.some(e => e.category === "IPO 공모");
+  const cls = any?.corp_cls;
+  const lab = ipo ? "상장 예정 (공모 진행)" : cls === "Y" ? "유가증권" : cls === "K" ? "코스닥" : cls === "N" ? "코넥스" : "비상장";
+  $("#drawer").innerHTML = `
+    <div class="dh"><button class="x" aria-label="닫기">×</button>
+      <h2>${esc(name)}</h2>
+      <div class="tags"><span class="tag gray">${esc(lab)}</span>${uwTag(code)}</div>
+    </div>
+    <div class="db">
+      <div class="card"><div class="sub" style="margin:0">${ipo ? "아직 상장 전이라 재무·여유자금 점수가 없습니다. 상장 후 첫 정기보고서가 나오면 다른 법인처럼 표시됩니다." : "분석 대상(상장사) 목록에 없는 법인이라 재무·여유자금 점수가 없습니다. 공시와 대주주 정보만 보여 드립니다."}
+        ${g ? `<div class="meta" style="margin-top:6px">본점 ${esc(g.a)}</div>` : ""}
+        <div style="margin-top:6px"><a href="https://dart.fss.or.kr/dsab007/main.do?option=corp&textCrpNm=${encodeURIComponent(name)}" target="_blank" rel="noopener">DART에서 회사 공시 전체 보기 ↗</a></div></div></div>
+      ${pledgeCard(code)}
+      <div class="card"><h3>자금 공시 <span class="sub" style="font-weight:400">최근 ${D.meta.lookback_days}일 ${evs.length}건</span></h3>
+        <div>${evs.slice(0, 30).map(e => `<div class="evbox">
+          <div class="evhead"><div><div class="t">${typeTag(e.type)} <b>${esc(e.category)}</b> <span class="meta">${dfmt(e.date)} 공시</span></div>
+          <div class="d" style="font-size:12.5px;color:var(--ink-2);margin-top:2px">${esc(e.report_nm)} ${OLD_TAG(e)}${e.detail?.superseded_by && !e.detail?.old ? '<span class="tag gray">이후 정정됨 — 최신 공시 기준</span>' : ""}</div></div>${DART_LINK(e)}</div>
+          ${evFull(e)}
+          <div class="meta" style="margin-top:4px">${esc(e.hint ?? D.meta.hints?.[e.category] ?? "")}</div></div>`).join("") || `<div class="empty">공시 없음</div>`}</div></div>
+      ${ownerCard(code)}
     </div>`;
   $("#modal").classList.add("on");
   document.body.style.overflow = "hidden";
